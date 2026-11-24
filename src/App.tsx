@@ -5,6 +5,7 @@ import { DebtListModal } from './components/DebtListModal';
 import { WalletSettingsModal } from './components/WalletSettingsModal';
 import { FixedFlowsModal } from './components/FixedFlowsModal';
 import { CloudSyncModal } from './components/CloudSyncModal';
+import { CosmicBackground } from './components/CosmicBackground';
 import {
   getSupabaseConfig,
   fetchCloudPlan,
@@ -553,7 +554,8 @@ export const App: React.FC = () => {
   const kpiDiffFromBaseline = dynamicDailyKpi - DAILY_KPI;
 
   return (
-    <div className="min-h-screen bg-zinc-950 text-zinc-100 flex flex-col font-sans antialiased selection:bg-emerald-500/30">
+    <div className="relative min-h-screen text-zinc-100 flex flex-col font-sans antialiased selection:bg-emerald-500/30">
+      <CosmicBackground />
       {/* Toast Alert */}
       {toastMessage && (
         <div className="fixed top-4 right-4 z-50 animate-in fade-in slide-in-from-top-4 duration-200 max-w-sm">
@@ -575,90 +577,93 @@ export const App: React.FC = () => {
       )}
 
       {/* Top Header */}
-      <header className="border-b border-zinc-800/80 bg-zinc-900/40 backdrop-blur-md sticky top-0 z-30">
-        <div className="max-w-6xl mx-auto px-4 py-3 flex items-center justify-between">
-          <div className="flex items-center gap-2.5">
-            <div className="w-8 h-8 rounded-lg bg-emerald-500/10 border border-emerald-500/30 flex items-center justify-center text-emerald-400">
+      <header className="border-b border-zinc-800/80 bg-zinc-950/70 backdrop-blur-md sticky top-0 z-30">
+        <div className="max-w-6xl mx-auto px-3 sm:px-4 py-2.5 sm:py-3 flex items-center justify-between">
+          {/* Logo & Title */}
+          <div className="flex items-center gap-2 sm:gap-2.5 min-w-0">
+            <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-emerald-500/20 to-teal-500/10 border border-emerald-500/30 flex items-center justify-center text-emerald-400 shrink-0 shadow-sm shadow-emerald-950">
               <CalendarIcon className="w-4 h-4" strokeWidth={1.5} />
             </div>
-            <div>
-              <h1 className="text-sm sm:text-base font-bold text-white tracking-tight">
-                Lịch Trả Nợ & Tích Lũy Tết 2026
+            <div className="truncate">
+              <h1 className="text-xs sm:text-base font-bold text-white tracking-tight truncate">
+                Lịch Trả Nợ Tết 2026
               </h1>
-              <p className="text-[11px] text-zinc-400 hidden sm:block">
+              <p className="text-[10px] sm:text-[11px] text-zinc-400 hidden sm:block">
                 Quản lý 3 ví (Ngân hàng, App, Tiền mặt) & cân đối thu chi tự động
               </p>
             </div>
           </div>
 
-          <div className="flex items-center gap-2">
-            {/* Button: Cloud Sync */}
+          {/* Unified Action Buttons Group - All equal size on mobile (h-8 w-8) */}
+          <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
+            {/* 1. Button: Cloud Sync */}
             <button
               onClick={() => setIsCloudModalOpen(true)}
-              className={`px-2.5 py-1.5 rounded-lg text-xs font-semibold border flex items-center gap-1.5 transition ${
+              className={`h-8 w-8 sm:w-auto sm:px-2.5 rounded-xl text-xs font-semibold border flex items-center justify-center gap-1.5 transition ${
                 syncStatus === 'synced'
-                  ? 'bg-sky-950/40 border-sky-500/40 text-sky-300 hover:bg-sky-900/40'
+                  ? 'bg-sky-950/50 border-sky-500/40 text-sky-300 hover:bg-sky-900/50 shadow-sm shadow-sky-950'
                   : syncStatus === 'syncing'
-                  ? 'bg-amber-950/40 border-amber-500/40 text-amber-300 hover:bg-amber-900/40'
+                  ? 'bg-amber-950/50 border-amber-500/40 text-amber-300 hover:bg-amber-900/50'
                   : syncStatus === 'error'
-                  ? 'bg-rose-950/40 border-rose-500/40 text-rose-300 hover:bg-rose-900/40'
-                  : 'bg-zinc-800 hover:bg-zinc-700 text-zinc-300 border-zinc-700'
+                  ? 'bg-rose-950/50 border-rose-500/40 text-rose-300 hover:bg-rose-900/50'
+                  : 'bg-zinc-900/80 hover:bg-zinc-800 text-zinc-300 border-zinc-800'
               }`}
-              title="Đồng bộ dữ liệu Realtime qua Supabase Cloud (Máy tính ⇄ Điện thoại)"
+              title="Đồng bộ dữ liệu Realtime qua Supabase Cloud"
             >
               {syncStatus === 'synced' ? (
                 <>
-                  <CloudCheck className="w-3.5 h-3.5 text-sky-400" strokeWidth={1.5} />
-                  <span className="hidden sm:inline">Cloud Sync</span>
-                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                  <CloudCheck className="w-4 h-4 text-sky-400 shrink-0" strokeWidth={1.5} />
+                  <span className="hidden sm:inline">Cloud</span>
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse hidden sm:inline-block" />
                 </>
               ) : syncStatus === 'syncing' ? (
                 <>
-                  <RefreshCw className="w-3.5 h-3.5 text-amber-400 animate-spin" strokeWidth={1.5} />
+                  <RefreshCw className="w-4 h-4 text-amber-400 animate-spin shrink-0" strokeWidth={1.5} />
                   <span className="hidden sm:inline">Đang sync...</span>
                 </>
               ) : (
                 <>
-                  <Cloud className="w-3.5 h-3.5 text-zinc-400" strokeWidth={1.5} />
-                  <span className="hidden sm:inline">Đồng Bộ Cloud</span>
+                  <Cloud className="w-4 h-4 text-zinc-400 shrink-0" strokeWidth={1.5} />
+                  <span className="hidden sm:inline">Cloud</span>
                 </>
               )}
             </button>
 
-            {/* Button: Fixed Flows Manager */}
+            {/* 2. Button: Fixed Flows Manager */}
             <button
               onClick={() => setIsFixedFlowsModalOpen(true)}
-              className="px-2.5 py-1.5 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-xs font-semibold text-zinc-200 border border-zinc-700 flex items-center gap-1.5 transition"
-              title="Thay đổi tiền mẹ cho, lương, tiền nhà, nợ hoặc tiền ăn mặc định"
+              className="h-8 w-8 sm:w-auto sm:px-2.5 rounded-xl bg-zinc-900/80 hover:bg-zinc-800 text-xs font-semibold text-zinc-200 border border-zinc-800 flex items-center justify-center gap-1.5 transition"
+              title="Thu & Chi Cố Định (Tiền mẹ cho, lương, tiền nhà, nợ)"
             >
-              <DollarSign className="w-3.5 h-3.5 text-amber-400" strokeWidth={1.5} />
-              <span className="hidden sm:inline">Thu & Chi Cố Định</span>
+              <DollarSign className="w-4 h-4 text-amber-400 shrink-0" strokeWidth={1.5} />
+              <span className="hidden sm:inline">Thu & Chi</span>
             </button>
 
-            {/* Button: Wallets Manager */}
+            {/* 3. Button: Wallets Manager */}
             <button
               onClick={() => setIsSettingsModalOpen(true)}
-              className="px-2.5 py-1.5 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-xs font-semibold text-zinc-200 border border-zinc-700 flex items-center gap-1.5 transition"
-              title="Quản lý số dư ngân hàng, ví app tài xế và tiền mặt"
+              className="h-8 w-8 sm:w-auto sm:px-2.5 rounded-xl bg-zinc-900/80 hover:bg-zinc-800 text-xs font-semibold text-zinc-200 border border-zinc-800 flex items-center justify-center gap-1.5 transition"
+              title="3 Nguồn Ví (Ngân hàng, Ví App, Tiền mặt)"
             >
-              <Wallet className="w-3.5 h-3.5 text-emerald-400" strokeWidth={1.5} />
-              <span className="hidden sm:inline">3 Nguồn Ví</span>
+              <Wallet className="w-4 h-4 text-emerald-400 shrink-0" strokeWidth={1.5} />
+              <span className="hidden sm:inline">3 Ví</span>
             </button>
 
-            {/* Button: Debt List Modal */}
+            {/* 4. Button: Debt List Modal */}
             <button
               onClick={() => setIsDebtModalOpen(true)}
-              className="px-2.5 py-1.5 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-xs font-semibold text-zinc-200 border border-zinc-700 flex items-center gap-1.5 transition"
+              className="h-8 w-8 sm:w-auto sm:px-2.5 rounded-xl bg-zinc-900/80 hover:bg-zinc-800 text-xs font-semibold text-zinc-200 border border-zinc-800 flex items-center justify-center gap-1.5 transition"
+              title="Xem danh sách các khoản nợ"
             >
-              <CreditCard className="w-3.5 h-3.5 text-zinc-400" strokeWidth={1.5} />
-              <span>Xem nợ</span>
+              <CreditCard className="w-4 h-4 text-purple-400 shrink-0" strokeWidth={1.5} />
+              <span className="hidden sm:inline">Xem nợ</span>
             </button>
 
-            {/* Sound toggle */}
+            {/* 5. Button: Sound toggle */}
             <button
               onClick={() => setIsSoundOn(!isSoundOn)}
               title={isSoundOn ? 'Tắt âm thanh' : 'Bật âm thanh'}
-              className="p-1.5 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-zinc-400 hover:text-zinc-200 border border-zinc-700 transition"
+              className="h-8 w-8 rounded-xl bg-zinc-900/80 hover:bg-zinc-800 text-zinc-400 hover:text-zinc-200 border border-zinc-800 flex items-center justify-center transition shrink-0"
             >
               {isSoundOn ? (
                 <Volume2 className="w-4 h-4 text-emerald-400" strokeWidth={1.5} />
@@ -677,10 +682,10 @@ export const App: React.FC = () => {
           {/* Card 1: Multi-Wallet Breakdown */}
           <div
             onClick={() => setIsSettingsModalOpen(true)}
-            className="group cursor-pointer p-3.5 rounded-xl bg-zinc-900/60 border border-zinc-800/80 hover:border-zinc-700 transition"
+            className="group cursor-pointer p-3 sm:p-3.5 rounded-2xl bg-zinc-900/60 backdrop-blur-md border border-white/10 hover:border-emerald-500/40 shadow-lg shadow-black/40 transition"
           >
             <div className="flex items-center justify-between text-zinc-400 text-xs mb-1">
-              <span>Tổng tiền đang có (3 ví)</span>
+              <span>Tổng tiền có (3 ví)</span>
               <Wallet className="w-3.5 h-3.5 text-emerald-400 group-hover:scale-110 transition" strokeWidth={1.5} />
             </div>
             <div className="text-base sm:text-lg font-black text-white">
@@ -712,7 +717,7 @@ export const App: React.FC = () => {
           </div>
 
           {/* Card 2: Đã cày & Đã tiêu */}
-          <div className="p-3.5 rounded-xl bg-zinc-900/60 border border-zinc-800/80">
+          <div className="p-3 sm:p-3.5 rounded-2xl bg-zinc-900/60 backdrop-blur-md border border-white/10 shadow-lg shadow-black/40">
             <div className="flex items-center justify-between text-zinc-400 text-xs mb-1">
               <span>Thu & Chi ({stats.completedDays} ngày)</span>
               <TrendingUp className="w-3.5 h-3.5 text-amber-400" strokeWidth={1.5} />
@@ -728,7 +733,7 @@ export const App: React.FC = () => {
           {/* Card 3: Mục tiêu */}
           <div
             onClick={() => setIsSettingsModalOpen(true)}
-            className="group cursor-pointer p-3.5 rounded-xl bg-zinc-900/60 border border-zinc-800/80 hover:border-zinc-700 transition"
+            className="group cursor-pointer p-3 sm:p-3.5 rounded-2xl bg-zinc-900/60 backdrop-blur-md border border-white/10 hover:border-rose-500/40 shadow-lg shadow-black/40 transition"
           >
             <div className="flex items-center justify-between text-zinc-400 text-xs mb-1">
               <span>Mục tiêu ({settings.targetCash / 1000000}tr)</span>
@@ -748,21 +753,27 @@ export const App: React.FC = () => {
           </div>
 
           {/* Card 4: KPI TỰ ĐỘNG ĐIỀU CHỈNH */}
-          <div className="p-3.5 rounded-xl bg-gradient-to-br from-zinc-900/90 to-zinc-900/40 border border-emerald-500/30">
+          <div className="p-3 sm:p-3.5 rounded-2xl bg-gradient-to-br from-zinc-900/90 to-zinc-900/50 backdrop-blur-md border border-emerald-500/30 shadow-lg shadow-emerald-950/20">
             <div className="flex items-center justify-between text-zinc-400 text-xs mb-1">
-              <span className="font-semibold text-emerald-400">KPI Tự Động Cân Đối</span>
-              <span className="text-[10px] px-1.5 py-0.2 rounded bg-emerald-500/10 text-emerald-400 font-mono">
+              <span className="font-semibold text-emerald-400">KPI Cân Đối</span>
+              <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-emerald-500/15 text-emerald-300 font-mono border border-emerald-500/30">
                 {stats.unenteredDaysCount} ngày còn
               </span>
             </div>
-            <div className="text-base sm:text-lg font-black text-emerald-400">
-              {dynamicDailyKpi.toLocaleString('vi-VN')} đ
-              <span className="text-xs font-normal text-zinc-300">/ngày</span>
+            <div className="flex items-baseline gap-1">
+              <span className="text-base sm:text-xl font-black text-emerald-400 tracking-tight">
+                {dynamicDailyKpi.toLocaleString('vi-VN')} đ
+              </span>
+              <span className="text-[11px] text-zinc-400 font-normal">/ngày</span>
             </div>
             <div className="text-[10px] text-zinc-400 mt-0.5 flex items-center justify-between">
               <span>~{dynamicHoursPerDay}h chạy xe/ngày</span>
               {kpiDiffFromBaseline !== 0 && (
-                <span className={kpiDiffFromBaseline > 0 ? 'text-amber-400 font-medium' : 'text-emerald-400 font-medium'}>
+                <span
+                  className={`font-semibold ${
+                    kpiDiffFromBaseline > 0 ? 'text-amber-400' : 'text-emerald-400'
+                  }`}
+                >
                   {kpiDiffFromBaseline > 0 ? `+${Math.round(kpiDiffFromBaseline / 1000)}k` : `${Math.round(kpiDiffFromBaseline / 1000)}k`}
                 </span>
               )}
@@ -798,7 +809,7 @@ export const App: React.FC = () => {
 
         {/* Month Filter Selector */}
         <div className="flex items-center justify-between border-b border-zinc-800/80 pb-3">
-          <div className="flex items-center gap-1.5 overflow-x-auto pb-1 sm:pb-0">
+          <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar pb-1 sm:pb-0">
             {[
               { id: 'all', label: 'Tất cả (75 ngày)' },
               { id: '11', label: 'Tháng 11' },

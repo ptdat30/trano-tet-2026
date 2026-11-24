@@ -4,8 +4,17 @@
 
 @layer base {
   body {
-    @apply bg-slate-950 text-slate-100 antialiased selection:bg-amber-500 selection:text-black min-h-screen font-sans;
+    @apply bg-[#05070f] text-slate-100 antialiased selection:bg-emerald-500 selection:text-black min-h-screen font-sans;
   }
+}
+
+/* Hide scrollbar for mobile swipe */
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+.no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
 }
 
 /* Custom scrollbar */
