@@ -4,6 +4,14 @@ import { DayModal } from './components/DayModal';
 import { DebtListModal } from './components/DebtListModal';
 import { WalletSettingsModal } from './components/WalletSettingsModal';
 import { FixedFlowsModal } from './components/FixedFlowsModal';
+import { CloudSyncModal } from './components/CloudSyncModal';
+import {
+  getSupabaseConfig,
+  fetchCloudPlan,
+  pushCloudPlan,
+  subscribeToCloudPlan,
+  getDeviceId
+} from './lib/supabase';
 import {
   buildInitialDays,
   DEFAULT_SETTINGS,
@@ -26,7 +34,10 @@ import {
   AlertCircle,
   Building2,
   Smartphone,
-  Banknote
+  Banknote,
+  Cloud,
+  CloudCheck,
+  RefreshCw
 } from 'lucide-react';
 
 const DAYS_STORAGE_KEY = 'tra_no_tet_calendar_v2';
@@ -88,6 +99,11 @@ export const App: React.FC = () => {
   const [isDebtModalOpen, setIsDebtModalOpen] = useState(false);
   const [isSettingsModalOpen, setIsSettingsModalOpen] = useState(false);
   const [isFixedFlowsModalOpen, setIsFixedFlowsModalOpen] = useState(false);
+  const [isCloudModalOpen, setIsCloudModalOpen] = useState(false);
+  const [syncStatus, setSyncStatus] = useState<'synced' | 'syncing' | 'offline' | 'unconfigured' | 'error'>(() => {
+    return getSupabaseConfig() ? 'syncing' : 'unconfigured';
+  });
+  const [lastSyncedAt, setLastSyncedAt] = useState<Date | null>(null);
   const [isSoundOn, setIsSoundOn] = useState(true);
   const [toastMessage, setToastMessage] = useState<{ text: string; type: 'success' | 'info' | 'warn' } | null>(null);
 
@@ -110,6 +126,92 @@ export const App: React.FC = () => {
     const timer = setTimeout(() => setToastMessage(null), 3500);
     return () => clearTimeout(timer);
   }, [toastMessage]);
+
+  // Helper to sync local changes to Supabase asynchronously
+  const broadcastToCloud = (
+    updatedDays: DayData[],
+    updatedSettings: FinanceSettings,
+    updatedSchedules: FixedScheduleItem[]
+  ) => {
+    if (!getSupabaseConfig()) return;
+    setSyncStatus('syncing');
+    pushCloudPlan({
+      days: updatedDays,
+      settings: updatedSettings,
+      schedules: updatedSchedules,
+      updatedAt: new Date().toISOString(),
+      deviceId: getDeviceId()
+    }).then((success) => {
+      if (success) {
+        setSyncStatus('synced');
+        setLastSyncedAt(new Date());
+      } else {
+        setSyncStatus('error');
+      }
+    });
+  };
+
+  // Supabase Realtime synchronization setup
+  useEffect(() => {
+    const config = getSupabaseConfig();
+    if (!config) {
+      setSyncStatus('unconfigured');
+      return;
+    }
+
+    let isMounted = true;
+    setSyncStatus('syncing');
+
+    fetchCloudPlan()
+      .then((cloudData) => {
+        if (!isMounted) return;
+        if (cloudData && cloudData.days && cloudData.settings) {
+          setDays(cloudData.days);
+          setSettings(cloudData.settings);
+          if (cloudData.schedules) setSchedules(cloudData.schedules);
+          setSyncStatus('synced');
+          setLastSyncedAt(new Date());
+        } else {
+          // If empty table, upload our current local plan as baseline
+          pushCloudPlan({
+            days,
+            settings,
+            schedules,
+            updatedAt: new Date().toISOString(),
+            deviceId: getDeviceId()
+          }).then((ok) => {
+            if (!isMounted) return;
+            setSyncStatus(ok ? 'synced' : 'error');
+            if (ok) setLastSyncedAt(new Date());
+          });
+        }
+      })
+      .catch((err) => {
+        console.error('Initial cloud fetch error:', err);
+        if (isMounted) setSyncStatus('error');
+      });
+
+    const unsubscribe = subscribeToCloudPlan((newPayload) => {
+      if (!isMounted) return;
+      if (newPayload.days && newPayload.settings) {
+        setDays(newPayload.days);
+        setSettings(newPayload.settings);
+        if (newPayload.schedules) setSchedules(newPayload.schedules);
+        setSyncStatus('synced');
+        setLastSyncedAt(new Date());
+        soundFx.playCoinSound();
+        setToastMessage({
+          type: 'info',
+          text: 'Vừa đồng bộ dữ liệu mới nhất từ thiết bị khác ☁️'
+        });
+      }
+    });
+
+    return () => {
+      isMounted = false;
+      unsubscribe();
+    };
+  }, []);
 
   // Total liquid cash across all 3 wallets
   const totalLiquidWallets = useMemo(() => {
@@ -252,35 +354,38 @@ export const App: React.FC = () => {
       cash: number;
     }
   ) => {
-    setDays((prev) =>
-      prev.map((d) =>
-        d.id === dayId
-          ? {
-              ...d,
-              hoursWorked: hours,
-              actualEarnings: earnings,
-              actualLivingExpense: livingExpense,
-              ...(overrides
-                ? {
-                    bikeCost: overrides.bikeCost,
-                    rentCost: overrides.rentCost,
-                    debtPayment: overrides.debtPayment,
-                    debtLabel: overrides.debtLabel,
-                    otherIncome: overrides.otherIncome,
-                    otherIncomeLabel: overrides.otherIncomeLabel
-                  }
-                : {})
-            }
-          : d
-      )
+    const updatedDays = days.map((d) =>
+      d.id === dayId
+        ? {
+            ...d,
+            hoursWorked: hours,
+            actualEarnings: earnings,
+            actualLivingExpense: livingExpense,
+            ...(overrides
+              ? {
+                  bikeCost: overrides.bikeCost,
+                  rentCost: overrides.rentCost,
+                  debtPayment: overrides.debtPayment,
+                  debtLabel: overrides.debtLabel,
+                  otherIncome: overrides.otherIncome,
+                  otherIncomeLabel: overrides.otherIncomeLabel
+                }
+              : {})
+          }
+        : d
     );
+    setDays(updatedDays);
 
+    let updatedSettings = settings;
     if (walletUpdate) {
-      setSettings((prev) => ({
-        ...prev,
+      updatedSettings = {
+        ...settings,
         wallets: walletUpdate
-      }));
+      };
+      setSettings(updatedSettings);
     }
+
+    broadcastToCloud(updatedDays, updatedSettings, schedules);
 
     const isAchieved = earnings >= dynamicDailyKpi;
     if (isAchieved) {
@@ -305,18 +410,18 @@ export const App: React.FC = () => {
   };
 
   const handleClearDay = (dayId: number) => {
-    setDays((prev) =>
-      prev.map((d) =>
-        d.id === dayId
-          ? {
-              ...d,
-              hoursWorked: null,
-              actualEarnings: null,
-              actualLivingExpense: null
-            }
-          : d
-      )
+    const updatedDays = days.map((d) =>
+      d.id === dayId
+        ? {
+            ...d,
+            hoursWorked: null,
+            actualEarnings: null,
+            actualLivingExpense: null
+          }
+        : d
     );
+    setDays(updatedDays);
+    broadcastToCloud(updatedDays, settings, schedules);
     setToastMessage({
       type: 'info',
       text: 'Đã xóa dữ liệu ngày này. KPI đã được hoàn trả về kế hoạch.'
@@ -376,6 +481,8 @@ export const App: React.FC = () => {
         text: 'Đã cập nhật số dư ví & mục tiêu! Toàn bộ KPI các ngày còn lại đã được tính lại chính xác.'
       });
     }
+
+    broadcastToCloud(days, newSettings, schedules);
   };
 
   // Sync Master Schedules to Days
@@ -429,6 +536,17 @@ export const App: React.FC = () => {
       type: 'success',
       text: 'Đã cập nhật toàn bộ các khoản thu & chi cố định! Lịch và KPI đã được tính toán lại.'
     });
+
+    broadcastToCloud(
+      days,
+      {
+        ...settings,
+        defaultFoodCost: foodCost,
+        highBikeCost: highBike,
+        lowBikeCost: lowBike
+      },
+      updatedSchedules
+    );
   };
 
   // KPI comparison against baseline 390k
@@ -474,6 +592,39 @@ export const App: React.FC = () => {
           </div>
 
           <div className="flex items-center gap-2">
+            {/* Button: Cloud Sync */}
+            <button
+              onClick={() => setIsCloudModalOpen(true)}
+              className={`px-2.5 py-1.5 rounded-lg text-xs font-semibold border flex items-center gap-1.5 transition ${
+                syncStatus === 'synced'
+                  ? 'bg-sky-950/40 border-sky-500/40 text-sky-300 hover:bg-sky-900/40'
+                  : syncStatus === 'syncing'
+                  ? 'bg-amber-950/40 border-amber-500/40 text-amber-300 hover:bg-amber-900/40'
+                  : syncStatus === 'error'
+                  ? 'bg-rose-950/40 border-rose-500/40 text-rose-300 hover:bg-rose-900/40'
+                  : 'bg-zinc-800 hover:bg-zinc-700 text-zinc-300 border-zinc-700'
+              }`}
+              title="Đồng bộ dữ liệu Realtime qua Supabase Cloud (Máy tính ⇄ Điện thoại)"
+            >
+              {syncStatus === 'synced' ? (
+                <>
+                  <CloudCheck className="w-3.5 h-3.5 text-sky-400" strokeWidth={1.5} />
+                  <span className="hidden sm:inline">Cloud Sync</span>
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                </>
+              ) : syncStatus === 'syncing' ? (
+                <>
+                  <RefreshCw className="w-3.5 h-3.5 text-amber-400 animate-spin" strokeWidth={1.5} />
+                  <span className="hidden sm:inline">Đang sync...</span>
+                </>
+              ) : (
+                <>
+                  <Cloud className="w-3.5 h-3.5 text-zinc-400" strokeWidth={1.5} />
+                  <span className="hidden sm:inline">Đồng Bộ Cloud</span>
+                </>
+              )}
+            </button>
+
             {/* Button: Fixed Flows Manager */}
             <button
               onClick={() => setIsFixedFlowsModalOpen(true)}
@@ -734,6 +885,23 @@ export const App: React.FC = () => {
         highBikeCost={settings.highBikeCost}
         lowBikeCost={settings.lowBikeCost}
         onSaveSchedules={handleSaveSchedules}
+      />
+
+      <CloudSyncModal
+        isOpen={isCloudModalOpen}
+        onClose={() => setIsCloudModalOpen(false)}
+        days={days}
+        settings={settings}
+        schedules={schedules}
+        onApplyCloudData={(newDays, newSettings, newSchedules) => {
+          setDays(newDays);
+          setSettings(newSettings);
+          setSchedules(newSchedules);
+          setSyncStatus('synced');
+          setLastSyncedAt(new Date());
+        }}
+        syncStatus={syncStatus}
+        lastSyncedAt={lastSyncedAt}
       />
     </div>
   );
