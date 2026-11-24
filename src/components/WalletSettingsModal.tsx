@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import type { FinanceSettings, DayCalculated } from '../types/finance';
-import { Wallet, Smartphone, Banknote, RotateCcw, Building2, Calculator, CheckSquare, Square } from 'lucide-react';
+import { Wallet, Smartphone, Banknote, RotateCcw, Building2, Calculator, CheckSquare, Square, Utensils } from 'lucide-react';
 import { DEFAULT_SETTINGS } from '../data/calendarData';
 
 interface WalletSettingsModalProps {
@@ -15,9 +15,12 @@ interface WalletSettingsModalProps {
       dayId: number;
       revenue: number;
       hours: number;
+      livingExpense: number;
     }
   ) => void;
 }
+
+const PRESET_LIVING_AMOUNTS = [40000, 60000, 75000, 100000, 120000];
 
 export const WalletSettingsModal: React.FC<WalletSettingsModalProps> = ({
   isOpen,
@@ -36,10 +39,10 @@ export const WalletSettingsModal: React.FC<WalletSettingsModalProps> = ({
   const [hourlyRate, setHourlyRate] = useState<string>(String(settings.hourlyRate ?? 65000));
 
   // Auto revenue recording state
-  // Default selected day: first unentered day, or day 1
   const firstUnenteredDay = days.find((d) => d.actualEarnings === null) || days[0];
   const [selectedDayId, setSelectedDayId] = useState<number>(firstUnenteredDay ? firstUnenteredDay.id : 1);
   const [shouldAutoRecord, setShouldAutoRecord] = useState<boolean>(true);
+  const [customLivingExpense, setCustomLivingExpense] = useState<string>('75000');
 
   useEffect(() => {
     setBank(String(settings.wallets?.bank ?? 1000000));
@@ -54,6 +57,19 @@ export const WalletSettingsModal: React.FC<WalletSettingsModalProps> = ({
     }
   }, [settings, days]);
 
+  const targetDay = days.find((d) => d.id === selectedDayId) || days[0];
+
+  // Update living expense when selected day changes
+  useEffect(() => {
+    if (targetDay) {
+      setCustomLivingExpense(
+        targetDay.actualLivingExpense !== null
+          ? String(targetDay.actualLivingExpense)
+          : String(targetDay.foodCost || 75000)
+      );
+    }
+  }, [selectedDayId, targetDay]);
+
   const parsedBank = parseInt(bank.replace(/\D/g, ''), 10) || 0;
   const parsedApp = parseInt(app.replace(/\D/g, ''), 10) || 0;
   const parsedCash = parseInt(cash.replace(/\D/g, ''), 10) || 0;
@@ -61,14 +77,12 @@ export const WalletSettingsModal: React.FC<WalletSettingsModalProps> = ({
 
   const parsedTarget = parseInt(targetCash.replace(/\D/g, ''), 10) || 0;
   const parsedRate = parseInt(hourlyRate.replace(/\D/g, ''), 10) || 65000;
+  const parsedLiving = parseInt(customLivingExpense.replace(/\D/g, ''), 10) || 0;
 
   // Auto-calculated daily revenue
   const balanceDiff = totalCurrent - currentWalletBalance;
-  const targetDay = days.find((d) => d.id === selectedDayId) || days[0];
-
-  const dayLiving = targetDay ? (targetDay.actualLivingExpense !== null ? targetDay.actualLivingExpense : targetDay.foodCost) : 75000;
   const dayFixedOutflow = targetDay ? (targetDay.bikeCost + targetDay.rentCost + targetDay.debtPayment) : 127000;
-  const totalDayExpenses = dayLiving + dayFixedOutflow;
+  const totalDayExpenses = parsedLiving + dayFixedOutflow;
   const dayOtherIncome = targetDay ? targetDay.otherIncome : 0;
 
   // Revenue = (Wallet_new - Wallet_prev) + Total_Day_Expense - Day_Other_Income
@@ -93,7 +107,8 @@ export const WalletSettingsModal: React.FC<WalletSettingsModalProps> = ({
         ? {
             dayId: targetDay.id,
             revenue: autoRevenue,
-            hours: autoHours
+            hours: autoHours,
+            livingExpense: parsedLiving
           }
         : undefined
     );
@@ -122,7 +137,7 @@ export const WalletSettingsModal: React.FC<WalletSettingsModalProps> = ({
                 Cập Nhật Số Dư Ví & Tự Động Tính Doanh Thu
               </h3>
               <p className="text-[11px] text-zinc-400">
-                Nhập số dư hiện tại để hệ thống tự động suy ra tiền chạy xe hôm nay
+                Nhập số dư hiện tại & tiền tiêu thực tế để suy ra doanh thu hôm nay
               </p>
             </div>
           </div>
@@ -139,7 +154,7 @@ export const WalletSettingsModal: React.FC<WalletSettingsModalProps> = ({
           {/* Section 1: 3 Wallets */}
           <div className="space-y-3">
             <span className="text-xs font-bold uppercase tracking-wider text-emerald-400">
-              1. Nhập Số Dư 3 Ví Hiện Tại Lúc Này
+              1. Nhập Số Dư 3 Ví Lúc Này
             </span>
 
             {/* Wallet 1: Bank Account */}
@@ -253,6 +268,46 @@ export const WalletSettingsModal: React.FC<WalletSettingsModalProps> = ({
               </div>
             </div>
 
+            {/* Custom living expense input right here */}
+            <div className="bg-zinc-950 p-3 rounded-xl border border-zinc-800 space-y-2">
+              <div className="flex justify-between items-center">
+                <label className="text-xs font-semibold text-zinc-200 flex items-center gap-1.5">
+                  <Utensils className="w-3.5 h-3.5 text-amber-400" strokeWidth={1.5} />
+                  <span>Tiền ăn uống / sinh hoạt thực tế bạn đã tiêu hôm nay:</span>
+                </label>
+                <span className="text-[10px] text-zinc-400">
+                  (Tự nhập theo thực chi)
+                </span>
+              </div>
+              <div className="relative">
+                <input
+                  type="text"
+                  value={customLivingExpense ? parsedLiving.toLocaleString('vi-VN') : ''}
+                  onChange={(e) => setCustomLivingExpense(e.target.value.replace(/\D/g, ''))}
+                  placeholder="75.000"
+                  className="w-full bg-zinc-900 border border-zinc-700 rounded-xl px-3.5 py-2 text-sm font-bold text-amber-400 focus:outline-none focus:border-amber-500"
+                />
+                <span className="absolute right-3.5 top-2.5 text-xs text-zinc-400">VNĐ</span>
+              </div>
+              {/* Quick Presets */}
+              <div className="grid grid-cols-5 gap-1 pt-0.5">
+                {PRESET_LIVING_AMOUNTS.map((amt) => (
+                  <button
+                    key={amt}
+                    type="button"
+                    onClick={() => setCustomLivingExpense(String(amt))}
+                    className={`py-1 text-[11px] font-semibold rounded-lg border transition ${
+                      parsedLiving === amt
+                        ? 'bg-amber-500 text-zinc-950 border-amber-400 font-bold'
+                        : 'bg-zinc-800 text-zinc-300 border-zinc-700 hover:bg-zinc-700'
+                    }`}
+                  >
+                    {amt === 75000 ? '75k (chuẩn)' : `${amt / 1000}k`}
+                  </button>
+                ))}
+              </div>
+            </div>
+
             {/* The Revenue Result Box */}
             <div className="p-3.5 rounded-xl bg-gradient-to-br from-amber-950/20 to-zinc-950 border border-amber-500/40 space-y-2">
               <div className="flex justify-between items-start">
@@ -278,11 +333,12 @@ export const WalletSettingsModal: React.FC<WalletSettingsModalProps> = ({
               <div className="text-[10px] text-zinc-400 bg-zinc-900/80 p-2 rounded-lg border border-zinc-800 space-y-0.5 font-mono">
                 <div>
                   Công thức: Doanh thu = Chênh lệch ví ({balanceDiff >= 0 ? '+' : ''}{balanceDiff.toLocaleString('vi-VN')}đ)
-                  + Chi phí ({totalDayExpenses.toLocaleString('vi-VN')}đ)
+                  + Tiền tiêu thực tế ({parsedLiving.toLocaleString('vi-VN')}đ)
+                  + Góp xe & nợ ({dayFixedOutflow.toLocaleString('vi-VN')}đ)
                   {dayOtherIncome > 0 ? ` - Thu khác (${dayOtherIncome.toLocaleString('vi-VN')}đ)` : ''}
                 </div>
                 <div className="text-zinc-400">
-                  (Chi phí hôm nay: Ăn {dayLiving / 1000}k + Góp xe {targetDay.bikeCost / 1000}k
+                  (Cố định hôm nay: Góp xe {targetDay.bikeCost / 1000}k
                   {targetDay.rentCost > 0 ? ` + Nhà ${targetDay.rentCost / 1000}k` : ''}
                   {targetDay.debtPayment > 0 ? ` + Nợ ${targetDay.debtPayment / 1000}k` : ''})
                 </div>
@@ -300,7 +356,7 @@ export const WalletSettingsModal: React.FC<WalletSettingsModalProps> = ({
                   <Square className="w-4 h-4 text-zinc-500 shrink-0" />
                 )}
                 <span>
-                  Tự động điền <b>{autoRevenue.toLocaleString('vi-VN')} đ</b> vào Ngày {targetDay.day}/{targetDay.month} trên lịch & cập nhật KPI
+                  Tự động điền doanh thu <b>{autoRevenue.toLocaleString('vi-VN')} đ</b> & tiền tiêu <b>{parsedLiving.toLocaleString('vi-VN')} đ</b> vào Ngày {targetDay.day}/{targetDay.month} trên lịch
                 </span>
               </button>
             </div>

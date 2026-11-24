@@ -316,6 +316,7 @@ export const App: React.FC = () => {
       dayId: number;
       revenue: number;
       hours: number;
+      livingExpense?: number;
     }
   ) => {
     setSettings(newSettings);
@@ -324,7 +325,14 @@ export const App: React.FC = () => {
       setDays((prev) =>
         prev.map((d) =>
           d.id === autoRecord.dayId
-            ? { ...d, actualEarnings: autoRecord.revenue, hoursWorked: autoRecord.hours }
+            ? {
+                ...d,
+                actualEarnings: autoRecord.revenue,
+                hoursWorked: autoRecord.hours,
+                ...(autoRecord.livingExpense !== undefined
+                  ? { actualLivingExpense: autoRecord.livingExpense }
+                  : {})
+              }
             : d
         )
       );
@@ -341,10 +349,13 @@ export const App: React.FC = () => {
 
       const targetD = days.find((d) => d.id === autoRecord.dayId);
       const dayText = targetD ? `Ngày ${targetD.day}/${targetD.month}` : `Ngày ${autoRecord.dayId}`;
+      const livingSpentText = autoRecord.livingExpense !== undefined
+        ? ` (sau khi trừ chi tiêu thực tế ${autoRecord.livingExpense.toLocaleString('vi-VN')} đ)`
+        : '';
 
       setToastMessage({
         type: 'success',
-        text: `Đã cập nhật 3 ví! Tự động suy ra và ghi nhận +${autoRecord.revenue.toLocaleString('vi-VN')} đ vào ${dayText} & cân đối lại KPI!`
+        text: `Đã cập nhật 3 ví! Tự động suy ra và ghi nhận +${autoRecord.revenue.toLocaleString('vi-VN')} đ vào ${dayText}${livingSpentText} & cân đối lại KPI!`
       });
     } else {
       setToastMessage({
