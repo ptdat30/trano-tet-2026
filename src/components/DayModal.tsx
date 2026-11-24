@@ -27,7 +27,7 @@ interface DayModalProps {
 }
 
 const PRESET_EARNINGS = [250000, 300000, 390000, 420000, 500000];
-const PRESET_EXPENSES = [50000, 75000, 100000, 120000, 150000];
+const PRESET_EXPENSES = [40000, 57000, 75000, 100000, 120000];
 
 export const DayModal: React.FC<DayModalProps> = ({
   isOpen,
@@ -339,9 +339,12 @@ export const DayModal: React.FC<DayModalProps> = ({
             )}
 
             <div className="pt-2 border-t border-zinc-800 flex justify-between items-center font-bold">
-              <span>Dư / Thiếu ngày này:</span>
+              <div>
+                <span className="text-zinc-200 block text-xs">Thực dư tích lũy hôm nay:</span>
+                <span className="text-[10px] text-zinc-400 font-normal block">(Sau khi trừ hết chi phí ăn uống & góp xe)</span>
+              </div>
               <span
-                className={`text-sm ${
+                className={`text-base font-black ${
                   dayNetSurplus >= 0 ? 'text-emerald-400' : 'text-rose-400'
                 }`}
               >

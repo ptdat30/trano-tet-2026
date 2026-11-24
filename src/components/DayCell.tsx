@@ -56,14 +56,19 @@ export const DayCell: React.FC<DayCellProps> = ({ day, onClick }) => {
       <div className="w-full pt-1 border-t border-zinc-800/70 flex items-center justify-between text-[10px] sm:text-xs">
         {isEntered ? (
           <>
-            <span
-              className={`font-black tracking-tight ${
-                isTargetAchieved ? 'text-emerald-400' : 'text-amber-400'
-              }`}
-            >
-              +{(day.actualEarnings || 0) / 1000}k
-            </span>
-            <span className="text-[9px] sm:text-[10px] text-zinc-400">{day.hoursWorked || 0}h</span>
+            <div>
+              <span
+                className={`font-black tracking-tight block ${
+                  isTargetAchieved ? 'text-emerald-400' : 'text-amber-400'
+                }`}
+              >
+                +{(day.actualEarnings || 0) / 1000}k
+              </span>
+              <span className="text-[8px] sm:text-[9px] text-zinc-400 block leading-tight font-medium">
+                Dư {day.netIncome >= 0 ? '+' : ''}{Math.round(day.netIncome / 1000)}k
+              </span>
+            </div>
+            <span className="text-[9px] sm:text-[10px] text-zinc-400 self-end">{day.hoursWorked || 0}h</span>
           </>
         ) : (
           <span className="text-[9px] sm:text-[10px] text-zinc-400 group-hover:text-amber-300 font-medium">

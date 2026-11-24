@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import type { FinanceSettings, DayCalculated } from '../types/finance';
-import { Wallet, Smartphone, Banknote, RotateCcw, Building2, Calculator, CheckSquare, Square, Utensils } from 'lucide-react';
+import { Wallet, Smartphone, Banknote, RotateCcw, Building2, Calculator, CheckSquare, Square, Utensils, CheckCircle2, TrendingUp } from 'lucide-react';
 import { DEFAULT_SETTINGS } from '../data/calendarData';
 
 interface WalletSettingsModalProps {
@@ -20,7 +20,7 @@ interface WalletSettingsModalProps {
   ) => void;
 }
 
-const PRESET_LIVING_AMOUNTS = [40000, 60000, 75000, 100000, 120000];
+const PRESET_LIVING_AMOUNTS = [40000, 57000, 75000, 100000, 120000];
 
 export const WalletSettingsModal: React.FC<WalletSettingsModalProps> = ({
   isOpen,
@@ -79,16 +79,21 @@ export const WalletSettingsModal: React.FC<WalletSettingsModalProps> = ({
   const parsedRate = parseInt(hourlyRate.replace(/\D/g, ''), 10) || 65000;
   const parsedLiving = parseInt(customLivingExpense.replace(/\D/g, ''), 10) || 0;
 
-  // Auto-calculated daily revenue
-  const balanceDiff = totalCurrent - currentWalletBalance;
+  // Real-world calculations
+  const balanceDiff = totalCurrent - currentWalletBalance; // Tiền tăng/giảm trong ví
   const dayFixedOutflow = targetDay ? (targetDay.bikeCost + targetDay.rentCost + targetDay.debtPayment) : 127000;
-  const totalDayExpenses = parsedLiving + dayFixedOutflow;
+  const totalDayExpenses = parsedLiving + dayFixedOutflow; // Tổng chi phí (góp xe + ăn uống + nợ)
   const dayOtherIncome = targetDay ? targetDay.otherIncome : 0;
 
-  // Revenue = (Wallet_new - Wallet_prev) + Total_Day_Expense - Day_Other_Income
+  // 1. Tổng doanh thu cày được: Doanh thu = Chênh lệch ví + Tổng chi phí - Thu khác
   const rawAutoRevenue = balanceDiff + totalDayExpenses - dayOtherIncome;
   const autoRevenue = Math.max(0, rawAutoRevenue);
   const autoHours = Math.round((autoRevenue / parsedRate) * 10) / 10;
+
+  // 2. Thực dư tích lũy hôm nay (Sau khi trừ chi phí): = Doanh thu - Chi phí
+  const netSurplusToday = (autoRevenue + dayOtherIncome) - totalDayExpenses;
+  const targetKpiForDay = targetDay ? (targetDay.dynamicKpiTarget || targetDay.kpiTarget) : 390000;
+  const isKpiAchieved = autoRevenue >= targetKpiForDay;
 
   const handleFormSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -125,7 +130,7 @@ export const WalletSettingsModal: React.FC<WalletSettingsModalProps> = ({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/80 backdrop-blur-sm overflow-y-auto">
-      <div className="w-full max-w-lg bg-zinc-900 border border-zinc-800 rounded-2xl p-5 shadow-2xl text-zinc-100 max-h-[92vh] overflow-y-auto my-auto">
+      <div className="w-full max-w-lg bg-zinc-900 border border-zinc-800 rounded-2xl p-4 sm:p-5 shadow-2xl text-zinc-100 max-h-[92vh] overflow-y-auto my-auto">
         {/* Header */}
         <div className="flex items-center justify-between pb-3 border-b border-zinc-800">
           <div className="flex items-center gap-2">
@@ -134,10 +139,10 @@ export const WalletSettingsModal: React.FC<WalletSettingsModalProps> = ({
             </div>
             <div>
               <h3 className="text-sm sm:text-base font-bold text-white">
-                Cập Nhật Số Dư Ví & Tự Động Tính Doanh Thu
+                Chốt Số Dư 3 Ví & Xuất Doanh Thu Ngày
               </h3>
               <p className="text-[11px] text-zinc-400">
-                Nhập số dư hiện tại & tiền tiêu thực tế để suy ra doanh thu hôm nay
+                Tự động tính ra Tổng doanh thu cày được và Thực dư sau khi trừ chi phí
               </p>
             </div>
           </div>
@@ -185,7 +190,7 @@ export const WalletSettingsModal: React.FC<WalletSettingsModalProps> = ({
                   <Smartphone className="w-3.5 h-3.5 text-amber-400" strokeWidth={1.5} />
                   <span>Ví App tài xế (Be / Grab / Shopee)</span>
                 </label>
-                <span className="text-[10px] text-zinc-400">Tiền còn trong ví tài xế</span>
+                <span className="text-[10px] text-zinc-400">Đã tự trừ 127k xe lúc 9g sáng</span>
               </div>
               <div className="relative">
                 <input
@@ -206,7 +211,7 @@ export const WalletSettingsModal: React.FC<WalletSettingsModalProps> = ({
                   <Banknote className="w-3.5 h-3.5 text-emerald-400" strokeWidth={1.5} />
                   <span>Ví tiền mặt</span>
                 </label>
-                <span className="text-[10px] text-zinc-400">Tiền mặt trong túi / ví</span>
+                <span className="text-[10px] text-zinc-400">Tiền mặt trong túi / bóp</span>
               </div>
               <div className="relative">
                 <input
@@ -224,21 +229,21 @@ export const WalletSettingsModal: React.FC<WalletSettingsModalProps> = ({
             <div className="p-3 rounded-xl bg-zinc-950 border border-zinc-800 flex items-center justify-between">
               <div>
                 <span className="text-xs font-bold text-zinc-300 block">
-                  Tổng 3 ví mới: <span className="text-emerald-400 font-black">{totalCurrent.toLocaleString('vi-VN')} đ</span>
+                  Tổng 3 ví hiện tại: <span className="text-emerald-400 font-black">{totalCurrent.toLocaleString('vi-VN')} đ</span>
                 </span>
                 <span className="text-[10px] text-zinc-400">
-                  Số dư trước khi cập nhật: {currentWalletBalance.toLocaleString('vi-VN')} đ
+                  Số dư buổi sáng (đầu ngày): {currentWalletBalance.toLocaleString('vi-VN')} đ
                 </span>
               </div>
               <div className="text-right">
                 <span
-                  className={`text-xs font-bold ${
+                  className={`text-xs sm:text-sm font-black ${
                     balanceDiff >= 0 ? 'text-emerald-400' : 'text-rose-400'
                   }`}
                 >
                   {balanceDiff >= 0 ? `+${balanceDiff.toLocaleString('vi-VN')}` : balanceDiff.toLocaleString('vi-VN')} đ
                 </span>
-                <span className="text-[10px] text-zinc-400 block">chênh lệch</span>
+                <span className="text-[10px] text-zinc-400 block">thực tăng trong ví</span>
               </div>
             </div>
           </div>
@@ -248,7 +253,7 @@ export const WalletSettingsModal: React.FC<WalletSettingsModalProps> = ({
             <div className="flex items-center justify-between">
               <span className="text-xs font-bold uppercase tracking-wider text-amber-400 flex items-center gap-1.5">
                 <Calculator className="w-3.5 h-3.5" strokeWidth={1.5} />
-                <span>2. Tự Động Suy Ra Doanh Thu Ngày</span>
+                <span>2. Tự Động Tính Doanh Thu Chạy Xe Hôm Nay</span>
               </span>
 
               {/* Day Selector */}
@@ -268,7 +273,7 @@ export const WalletSettingsModal: React.FC<WalletSettingsModalProps> = ({
               </div>
             </div>
 
-            {/* Custom living expense input right here */}
+            {/* Custom living expense input */}
             <div className="bg-zinc-950 p-3 rounded-xl border border-zinc-800 space-y-2">
               <div className="flex justify-between items-center">
                 <label className="text-xs font-semibold text-zinc-200 flex items-center gap-1.5">
@@ -276,7 +281,7 @@ export const WalletSettingsModal: React.FC<WalletSettingsModalProps> = ({
                   <span>Tiền ăn uống / sinh hoạt thực tế bạn đã tiêu hôm nay:</span>
                 </label>
                 <span className="text-[10px] text-zinc-400">
-                  (Tự nhập theo thực chi)
+                  (Nhập số thực tiêu)
                 </span>
               </div>
               <div className="relative">
@@ -285,9 +290,9 @@ export const WalletSettingsModal: React.FC<WalletSettingsModalProps> = ({
                   value={customLivingExpense ? parsedLiving.toLocaleString('vi-VN') : ''}
                   onChange={(e) => setCustomLivingExpense(e.target.value.replace(/\D/g, ''))}
                   placeholder="75.000"
-                  className="w-full bg-zinc-900 border border-zinc-700 rounded-xl px-3.5 py-2 text-sm font-bold text-amber-400 focus:outline-none focus:border-amber-500"
+                  className="w-full bg-zinc-900 border border-zinc-700 rounded-xl px-3.5 py-1.5 text-sm font-bold text-amber-400 focus:outline-none focus:border-amber-500"
                 />
-                <span className="absolute right-3.5 top-2.5 text-xs text-zinc-400">VNĐ</span>
+                <span className="absolute right-3.5 top-2 text-xs text-zinc-400">VNĐ</span>
               </div>
               {/* Quick Presets */}
               <div className="grid grid-cols-5 gap-1 pt-0.5">
@@ -296,7 +301,7 @@ export const WalletSettingsModal: React.FC<WalletSettingsModalProps> = ({
                     key={amt}
                     type="button"
                     onClick={() => setCustomLivingExpense(String(amt))}
-                    className={`py-1 text-[11px] font-semibold rounded-lg border transition ${
+                    className={`py-1 text-[10px] font-semibold rounded-lg border transition ${
                       parsedLiving === amt
                         ? 'bg-amber-500 text-zinc-950 border-amber-400 font-bold'
                         : 'bg-zinc-800 text-zinc-300 border-zinc-700 hover:bg-zinc-700'
@@ -308,57 +313,100 @@ export const WalletSettingsModal: React.FC<WalletSettingsModalProps> = ({
               </div>
             </div>
 
-            {/* The Revenue Result Box */}
-            <div className="p-3.5 rounded-xl bg-gradient-to-br from-amber-950/20 to-zinc-950 border border-amber-500/40 space-y-2">
-              <div className="flex justify-between items-start">
+            {/* Clear 3-Line Financial Calculation Breakdown */}
+            <div className="p-3.5 rounded-xl bg-gradient-to-br from-zinc-950 to-zinc-900 border border-zinc-700 space-y-2.5">
+              {/* Row 1: Gross Driving Revenue */}
+              <div className="flex items-center justify-between pb-2 border-b border-zinc-800">
                 <div>
-                  <span className="text-xs text-zinc-300 font-medium block">
-                    Doanh thu chạy xe tự động suy ra cho Ngày {targetDay.day}/{targetDay.month}:
+                  <span className="text-xs font-bold text-amber-300 flex items-center gap-1.5">
+                    <TrendingUp className="w-4 h-4 text-amber-400" strokeWidth={1.5} />
+                    <span>TỔNG DOANH THU ĐÃ CÀY ĐƯỢC:</span>
                   </span>
-                  <div className="text-lg sm:text-xl font-black text-amber-400 mt-0.5">
-                    +{autoRevenue.toLocaleString('vi-VN')} đ
-                  </div>
+                  <p className="text-[10px] text-zinc-400 mt-0.5">
+                    (Tiền xe kiếm được trước khi bị trừ chi phí)
+                  </p>
                 </div>
                 <div className="text-right">
-                  <span className="text-xs text-zinc-300 font-bold block">
-                    ~{autoHours} giờ xe
-                  </span>
+                  <div className="text-lg sm:text-xl font-black text-amber-400">
+                    +{autoRevenue.toLocaleString('vi-VN')} đ
+                  </div>
                   <span className="text-[10px] text-zinc-400">
-                    KPI: {((targetDay.dynamicKpiTarget || targetDay.kpiTarget) / 1000)}k
+                    ~{autoHours} giờ chạy xe
                   </span>
                 </div>
               </div>
 
-              {/* Formula detail explanation */}
-              <div className="text-[10px] text-zinc-400 bg-zinc-900/80 p-2 rounded-lg border border-zinc-800 space-y-0.5 font-mono">
-                <div>
-                  Công thức: Doanh thu = Chênh lệch ví ({balanceDiff >= 0 ? '+' : ''}{balanceDiff.toLocaleString('vi-VN')}đ)
-                  + Tiền tiêu thực tế ({parsedLiving.toLocaleString('vi-VN')}đ)
-                  + Góp xe & nợ ({dayFixedOutflow.toLocaleString('vi-VN')}đ)
-                  {dayOtherIncome > 0 ? ` - Thu khác (${dayOtherIncome.toLocaleString('vi-VN')}đ)` : ''}
+              {/* Row 2: Expenses Deducted */}
+              <div className="text-xs text-zinc-400 space-y-1 bg-zinc-950/70 p-2.5 rounded-lg border border-zinc-800">
+                <div className="flex justify-between font-semibold text-zinc-300">
+                  <span>Các khoản chi phí trong ngày:</span>
+                  <span className="text-rose-400 font-bold">-{totalDayExpenses.toLocaleString('vi-VN')} đ</span>
                 </div>
-                <div className="text-zinc-400">
-                  (Cố định hôm nay: Góp xe {targetDay.bikeCost / 1000}k
-                  {targetDay.rentCost > 0 ? ` + Nhà ${targetDay.rentCost / 1000}k` : ''}
-                  {targetDay.debtPayment > 0 ? ` + Nợ ${targetDay.debtPayment / 1000}k` : ''})
+                <div className="flex justify-between text-[11px] pl-2 text-zinc-400">
+                  <span>• Tiền góp xe (App tự động trừ lúc 9g sáng):</span>
+                  <span className="text-zinc-200">-{targetDay.bikeCost.toLocaleString('vi-VN')} đ</span>
+                </div>
+                <div className="flex justify-between text-[11px] pl-2 text-zinc-400">
+                  <span>• Tiền ăn uống / sinh hoạt bạn tiêu:</span>
+                  <span className="text-amber-400">-{parsedLiving.toLocaleString('vi-VN')} đ</span>
+                </div>
+                {targetDay.rentCost > 0 && (
+                  <div className="flex justify-between text-[11px] pl-2 text-purple-300">
+                    <span>• Tiền nhà:</span>
+                    <span>-{targetDay.rentCost.toLocaleString('vi-VN')} đ</span>
+                  </div>
+                )}
+                {targetDay.debtPayment > 0 && (
+                  <div className="flex justify-between text-[11px] pl-2 text-rose-300">
+                    <span>• Tiền trả nợ ({targetDay.debtLabel}):</span>
+                    <span>-{targetDay.debtPayment.toLocaleString('vi-VN')} đ</span>
+                  </div>
+                )}
+              </div>
+
+              {/* Row 3: Net Surplus after expenses */}
+              <div className="flex items-center justify-between pt-1">
+                <div>
+                  <span className="text-xs font-bold text-emerald-300 flex items-center gap-1.5">
+                    <CheckCircle2 className="w-4 h-4 text-emerald-400" strokeWidth={1.5} />
+                    <span>THỰC DƯ TÍCH LŨY (SAU TRỪ CHI PHÍ):</span>
+                  </span>
+                  <p className="text-[10px] text-zinc-400 mt-0.5">
+                    (= Doanh thu {autoRevenue / 1000}k - Chi phí {totalDayExpenses / 1000}k)
+                  </p>
+                </div>
+                <div className="text-right">
+                  <div
+                    className={`text-base sm:text-lg font-black ${
+                      netSurplusToday >= 0 ? 'text-emerald-400' : 'text-rose-400'
+                    }`}
+                  >
+                    {netSurplusToday >= 0 ? '+' : ''}
+                    {netSurplusToday.toLocaleString('vi-VN')} đ
+                  </div>
+                  <span className="text-[10px] text-zinc-400">
+                    {isKpiAchieved ? '🎉 Vượt KPI hôm nay!' : 'Đã gom vào ví'}
+                  </span>
                 </div>
               </div>
 
               {/* Checkbox: Auto Record */}
-              <button
-                type="button"
-                onClick={() => setShouldAutoRecord(!shouldAutoRecord)}
-                className="flex items-center gap-2 pt-1 text-xs text-zinc-200 hover:text-white cursor-pointer select-none"
-              >
-                {shouldAutoRecord ? (
-                  <CheckSquare className="w-4 h-4 text-emerald-400 shrink-0" />
-                ) : (
-                  <Square className="w-4 h-4 text-zinc-500 shrink-0" />
-                )}
-                <span>
-                  Tự động điền doanh thu <b>{autoRevenue.toLocaleString('vi-VN')} đ</b> & tiền tiêu <b>{parsedLiving.toLocaleString('vi-VN')} đ</b> vào Ngày {targetDay.day}/{targetDay.month} trên lịch
-                </span>
-              </button>
+              <div className="pt-2 border-t border-zinc-800">
+                <button
+                  type="button"
+                  onClick={() => setShouldAutoRecord(!shouldAutoRecord)}
+                  className="flex items-center gap-2 text-xs text-zinc-200 hover:text-white cursor-pointer select-none"
+                >
+                  {shouldAutoRecord ? (
+                    <CheckSquare className="w-4 h-4 text-emerald-400 shrink-0" />
+                  ) : (
+                    <Square className="w-4 h-4 text-zinc-500 shrink-0" />
+                  )}
+                  <span>
+                    Tự động ghi nhận doanh thu <b>+{autoRevenue.toLocaleString('vi-VN')} đ</b> & tiền tiêu <b>{parsedLiving.toLocaleString('vi-VN')} đ</b> vào Ngày {targetDay.day}/{targetDay.month}
+                  </span>
+                </button>
+              </div>
             </div>
           </div>
 
