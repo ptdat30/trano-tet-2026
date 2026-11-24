@@ -7,7 +7,7 @@ interface DayModalProps {
   isOpen: boolean;
   onClose: () => void;
   day: DayCalculated | null;
-  currentWalletBalance?: number;
+  dayStartBalance?: number;
   hourlyRate?: number;
   onSave: (
     dayId: number,
@@ -21,6 +21,11 @@ interface DayModalProps {
       debtLabel?: string;
       otherIncome: number;
       otherIncomeLabel?: string;
+    },
+    walletUpdate?: {
+      bank: number;
+      app: number;
+      cash: number;
     }
   ) => void;
   onClear: (dayId: number) => void;
@@ -33,7 +38,7 @@ export const DayModal: React.FC<DayModalProps> = ({
   isOpen,
   onClose,
   day,
-  currentWalletBalance = 1000000,
+  dayStartBalance = 1000000,
   hourlyRate = 65000,
   onSave,
   onClear
@@ -98,8 +103,9 @@ export const DayModal: React.FC<DayModalProps> = ({
   const parsedCalcApp = parseInt(calcApp.replace(/\D/g, ''), 10) || 0;
   const parsedCalcCash = parseInt(calcCash.replace(/\D/g, ''), 10) || 0;
   const calcTotalNew = parsedCalcBank + parsedCalcApp + parsedCalcCash;
-  const calcDiff = calcTotalNew - currentWalletBalance;
-  const derivedRevenue = Math.max(0, calcDiff + totalDayExpense - parsedIncome);
+  const calcDiff = calcTotalNew > 0 ? calcTotalNew - dayStartBalance : 0;
+  const rawDerivedRevenue = calcDiff + totalDayExpense - parsedIncome;
+  const derivedRevenue = Math.max(0, Math.round(rawDerivedRevenue / 1000) * 1000);
   const derivedHours = Math.round((derivedRevenue / hourlyRate) * 10) / 10;
 
   const handleApplyWalletRevenue = () => {
@@ -122,14 +128,27 @@ export const DayModal: React.FC<DayModalProps> = ({
   const handleFormSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     const h = parseFloat(hours) || 0;
-    onSave(day.id, h, parsedEarnings, parsedLiving, {
-      bikeCost: parsedBike,
-      rentCost: parsedRent,
-      debtPayment: parsedDebt,
-      debtLabel: debtLabel.trim() || undefined,
-      otherIncome: parsedIncome,
-      otherIncomeLabel: otherIncomeLabel.trim() || undefined
-    });
+    onSave(
+      day.id,
+      h,
+      parsedEarnings,
+      parsedLiving,
+      {
+        bikeCost: parsedBike,
+        rentCost: parsedRent,
+        debtPayment: parsedDebt,
+        debtLabel: debtLabel.trim() || undefined,
+        otherIncome: parsedIncome,
+        otherIncomeLabel: otherIncomeLabel.trim() || undefined
+      },
+      calcTotalNew > 0
+        ? {
+            bank: parsedCalcBank,
+            app: parsedCalcApp,
+            cash: parsedCalcCash
+          }
+        : undefined
+    );
     onClose();
   };
 
@@ -180,9 +199,14 @@ export const DayModal: React.FC<DayModalProps> = ({
             {/* Quick Wallet Calculation Accordion */}
             {showWalletCalc && (
               <div className="p-3 bg-zinc-950 border border-amber-500/40 rounded-xl space-y-2 animate-in fade-in duration-150">
-                <span className="text-[11px] font-bold text-amber-300 block">
-                  Nhập số dư 3 ví lúc chốt ca hôm nay:
-                </span>
+                <div className="flex items-center justify-between">
+                  <span className="text-[11px] font-bold text-amber-300 block">
+                    Nhập số dư 3 ví lúc chốt ca hôm nay:
+                  </span>
+                  <span className="text-[10px] text-zinc-400">
+                    Sáng đầu ngày: {dayStartBalance.toLocaleString('vi-VN')} đ
+                  </span>
+                </div>
                 <div className="grid grid-cols-3 gap-1.5">
                   <div>
                     <label className="text-[9px] text-zinc-400 block mb-0.5">Ngân hàng:</label>
@@ -217,16 +241,23 @@ export const DayModal: React.FC<DayModalProps> = ({
                 </div>
 
                 <div className="flex items-center justify-between pt-1 border-t border-zinc-800">
-                  <div className="text-[10px] text-zinc-300">
-                    Suy ra doanh thu: <b className="text-amber-400">+{derivedRevenue.toLocaleString('vi-VN')} đ</b> (~{derivedHours}h)
+                  <div className="text-[10px] text-zinc-300 space-y-0.5">
+                    <div>
+                      Chênh lệch ví: <b className={calcDiff >= 0 ? 'text-emerald-400' : 'text-rose-400'}>
+                        {calcDiff >= 0 ? '+' : ''}{calcDiff.toLocaleString('vi-VN')} đ
+                      </b>
+                    </div>
+                    <div>
+                      Suy ra doanh thu: <b className="text-amber-400">+{derivedRevenue.toLocaleString('vi-VN')} đ</b> (~{derivedHours}h)
+                    </div>
                   </div>
                   <button
                     type="button"
                     onClick={handleApplyWalletRevenue}
-                    className="px-2.5 py-1 rounded-md bg-amber-500 hover:bg-amber-400 text-zinc-950 font-bold text-xs flex items-center gap-1 shadow"
+                    className="px-2.5 py-1.5 rounded-md bg-amber-500 hover:bg-amber-400 text-zinc-950 font-bold text-xs flex items-center gap-1 shadow"
                   >
-                    <Check className="w-3 h-3" />
-                    <span>Áp dụng</span>
+                    <Check className="w-3.5 h-3.5" />
+                    <span>Áp dụng ({derivedRevenue > 0 ? `${Math.round(derivedRevenue / 1000)}k` : '0k'})</span>
                   </button>
                 </div>
               </div>

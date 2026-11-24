@@ -8,7 +8,6 @@ interface WalletSettingsModalProps {
   onClose: () => void;
   settings: FinanceSettings;
   days: DayCalculated[];
-  currentWalletBalance: number;
   onSave: (
     newSettings: FinanceSettings,
     autoRecord?: {
@@ -27,7 +26,6 @@ export const WalletSettingsModal: React.FC<WalletSettingsModalProps> = ({
   onClose,
   settings,
   days,
-  currentWalletBalance,
   onSave
 }) => {
   if (!isOpen) return null;
@@ -35,6 +33,7 @@ export const WalletSettingsModal: React.FC<WalletSettingsModalProps> = ({
   const [bank, setBank] = useState<string>(String(settings.wallets?.bank ?? 1000000));
   const [app, setApp] = useState<string>(String(settings.wallets?.app ?? 0));
   const [cash, setCash] = useState<string>(String(settings.wallets?.cash ?? 0));
+  const [initialCash, setInitialCash] = useState<string>(String(settings.initialCash ?? 1000000));
   const [targetCash, setTargetCash] = useState<string>(String(settings.targetCash ?? 15000000));
   const [hourlyRate, setHourlyRate] = useState<string>(String(settings.hourlyRate ?? 65000));
 
@@ -48,6 +47,7 @@ export const WalletSettingsModal: React.FC<WalletSettingsModalProps> = ({
     setBank(String(settings.wallets?.bank ?? 1000000));
     setApp(String(settings.wallets?.app ?? 0));
     setCash(String(settings.wallets?.cash ?? 0));
+    setInitialCash(String(settings.initialCash ?? 1000000));
     setTargetCash(String(settings.targetCash ?? 15000000));
     setHourlyRate(String(settings.hourlyRate ?? 65000));
 
@@ -75,19 +75,25 @@ export const WalletSettingsModal: React.FC<WalletSettingsModalProps> = ({
   const parsedCash = parseInt(cash.replace(/\D/g, ''), 10) || 0;
   const totalCurrent = parsedBank + parsedApp + parsedCash;
 
+  const parsedInitial = parseInt(initialCash.replace(/\D/g, ''), 10) || 1000000;
   const parsedTarget = parseInt(targetCash.replace(/\D/g, ''), 10) || 0;
   const parsedRate = parseInt(hourlyRate.replace(/\D/g, ''), 10) || 65000;
   const parsedLiving = parseInt(customLivingExpense.replace(/\D/g, ''), 10) || 0;
 
-  // Real-world calculations
-  const balanceDiff = totalCurrent - currentWalletBalance; // Tiền tăng/giảm trong ví
+  // Real-world calculations: compare against balance before targetDay began
+  const targetDayIndex = days.findIndex((d) => d.id === selectedDayId);
+  const dayStartBalance = targetDayIndex > 0
+    ? days[targetDayIndex - 1].runningBalance
+    : (settings.initialCash ?? 1000000);
+
+  const balanceDiff = totalCurrent - dayStartBalance; // Tiền tăng/giảm trong ví hôm nay so với đầu ngày
   const dayFixedOutflow = targetDay ? (targetDay.bikeCost + targetDay.rentCost + targetDay.debtPayment) : 127000;
   const totalDayExpenses = parsedLiving + dayFixedOutflow; // Tổng chi phí (góp xe + ăn uống + nợ)
   const dayOtherIncome = targetDay ? targetDay.otherIncome : 0;
 
   // 1. Tổng doanh thu cày được: Doanh thu = Chênh lệch ví + Tổng chi phí - Thu khác
   const rawAutoRevenue = balanceDiff + totalDayExpenses - dayOtherIncome;
-  const autoRevenue = Math.max(0, rawAutoRevenue);
+  const autoRevenue = Math.max(0, Math.round(rawAutoRevenue / 1000) * 1000);
   const autoHours = Math.round((autoRevenue / parsedRate) * 10) / 10;
 
   // 2. Thực dư tích lũy hôm nay (Sau khi trừ chi phí): = Doanh thu - Chi phí
@@ -100,6 +106,7 @@ export const WalletSettingsModal: React.FC<WalletSettingsModalProps> = ({
     onSave(
       {
         ...settings,
+        initialCash: parsedInitial,
         wallets: {
           bank: parsedBank,
           app: parsedApp,
@@ -124,6 +131,7 @@ export const WalletSettingsModal: React.FC<WalletSettingsModalProps> = ({
     setBank(String(DEFAULT_SETTINGS.wallets.bank));
     setApp(String(DEFAULT_SETTINGS.wallets.app));
     setCash(String(DEFAULT_SETTINGS.wallets.cash));
+    setInitialCash(String(DEFAULT_SETTINGS.initialCash ?? 1000000));
     setTargetCash(String(DEFAULT_SETTINGS.targetCash));
     setHourlyRate(String(DEFAULT_SETTINGS.hourlyRate));
   };
@@ -232,7 +240,7 @@ export const WalletSettingsModal: React.FC<WalletSettingsModalProps> = ({
                   Tổng 3 ví hiện tại: <span className="text-emerald-400 font-black">{totalCurrent.toLocaleString('vi-VN')} đ</span>
                 </span>
                 <span className="text-[10px] text-zinc-400">
-                  Số dư buổi sáng (đầu ngày): {currentWalletBalance.toLocaleString('vi-VN')} đ
+                  Số dư sáng đầu ngày ({targetDay ? `Ngày ${targetDay.day}/${targetDay.month}` : ''}): {dayStartBalance.toLocaleString('vi-VN')} đ
                 </span>
               </div>
               <div className="text-right">
@@ -415,6 +423,26 @@ export const WalletSettingsModal: React.FC<WalletSettingsModalProps> = ({
             <span className="text-xs font-bold uppercase tracking-wider text-rose-400">
               3. Mục Tiêu & Cài Đặt KPI
             </span>
+
+            {/* Starting Balance of Campaign */}
+            <div>
+              <label className="block text-xs font-semibold text-zinc-300 mb-1">
+                Số vốn ban đầu sáng 24/11 (Bắt đầu chiến dịch)
+              </label>
+              <div className="relative">
+                <input
+                  type="text"
+                  value={initialCash ? parsedInitial.toLocaleString('vi-VN') : ''}
+                  onChange={(e) => setInitialCash(e.target.value.replace(/\D/g, ''))}
+                  placeholder="1.000.000"
+                  className="w-full bg-zinc-950 border border-zinc-700 rounded-xl px-3.5 py-2 text-sm font-bold text-white focus:outline-none focus:border-zinc-500"
+                />
+                <span className="absolute right-3.5 top-2.5 text-xs text-zinc-400">VNĐ</span>
+              </div>
+              <p className="text-[10px] text-zinc-400 mt-1">
+                Mặc định: 1.000.000 đ (Số tiền bạn có sẵn trong người vào sáng ngày đầu tiên).
+              </p>
+            </div>
 
             {/* Target Cash */}
             <div>

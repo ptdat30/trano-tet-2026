@@ -36,6 +36,7 @@ export interface DayCalculated extends DayData {
 }
 
 export interface FinanceSettings {
+  initialCash?: number; // Starting balance morning of Day 1 (default 1,000,000)
   wallets: WalletBreakdown;
   targetCash: number; // default 15,000,000
   hourlyRate: number; // default 65,000

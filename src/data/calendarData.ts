@@ -5,6 +5,7 @@ export const TARGET_CASH = 15000000;
 export const DAILY_KPI = 390000;
 
 export const DEFAULT_SETTINGS: FinanceSettings = {
+  initialCash: 1000000,
   wallets: {
     bank: 1000000,
     app: 0,

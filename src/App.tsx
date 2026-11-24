@@ -121,9 +121,10 @@ export const App: React.FC = () => {
   const { calculatedDays, dynamicDailyKpi, dynamicHoursPerDay, stats } = useMemo(() => {
     const unenteredDays = days.filter((d) => d.actualEarnings === null);
     const enteredDays = days.filter((d) => d.actualEarnings !== null);
+    const initialCampaignCash = settings.initialCash ?? 1000000;
 
     // Compute wallet balance after all entered days
-    let runningBalanceEntered = totalLiquidWallets;
+    let runningBalanceEntered = initialCampaignCash;
     enteredDays.forEach((d) => {
       const living = d.actualLivingExpense !== null ? d.actualLivingExpense : d.foodCost;
       const totalExp = living + d.bikeCost + d.rentCost + d.debtPayment;
@@ -131,7 +132,7 @@ export const App: React.FC = () => {
       runningBalanceEntered += net;
     });
 
-    const currentWalletBalance = runningBalanceEntered;
+    const currentWalletBalance = enteredDays.length > 0 ? runningBalanceEntered : totalLiquidWallets;
 
     // Remaining future commitments for unentered days
     const futureIncomes = unenteredDays.reduce((sum, d) => sum + d.otherIncome, 0);
@@ -154,7 +155,7 @@ export const App: React.FC = () => {
     const dynamicHours = Math.round((dynamicKpi / settings.hourlyRate) * 10) / 10;
 
     // Build calculated day objects
-    let rollingBal = totalLiquidWallets;
+    let rollingBal = initialCampaignCash;
     const calculated = days.map((d) => {
       const effectiveLiving = d.actualLivingExpense !== null ? d.actualLivingExpense : d.foodCost;
       const totalExpense = effectiveLiving + d.bikeCost + d.rentCost + d.debtPayment;
@@ -244,6 +245,11 @@ export const App: React.FC = () => {
       debtLabel?: string;
       otherIncome: number;
       otherIncomeLabel?: string;
+    },
+    walletUpdate?: {
+      bank: number;
+      app: number;
+      cash: number;
     }
   ) => {
     setDays((prev) =>
@@ -268,6 +274,13 @@ export const App: React.FC = () => {
           : d
       )
     );
+
+    if (walletUpdate) {
+      setSettings((prev) => ({
+        ...prev,
+        wallets: walletUpdate
+      }));
+    }
 
     const isAchieved = earnings >= dynamicDailyKpi;
     if (isAchieved) {
@@ -684,7 +697,16 @@ export const App: React.FC = () => {
       <DayModal
         isOpen={isDayModalOpen}
         day={selectedDay}
-        currentWalletBalance={stats.currentBalance}
+        dayStartBalance={
+          selectedDay
+            ? (() => {
+                const idx = calculatedDays.findIndex((d) => d.id === selectedDay.id);
+                return idx > 0
+                  ? calculatedDays[idx - 1].runningBalance
+                  : (settings.initialCash ?? 1000000);
+              })()
+            : (settings.initialCash ?? 1000000)
+        }
         hourlyRate={settings.hourlyRate}
         onClose={() => setIsDayModalOpen(false)}
         onSave={handleSaveDay}
@@ -700,7 +722,6 @@ export const App: React.FC = () => {
         isOpen={isSettingsModalOpen}
         settings={settings}
         days={calculatedDays}
-        currentWalletBalance={stats.currentBalance}
         onClose={() => setIsSettingsModalOpen(false)}
         onSave={handleSaveSettings}
       />
