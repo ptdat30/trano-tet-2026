@@ -45,6 +45,49 @@ const DAYS_STORAGE_KEY = 'tra_no_tet_calendar_v2';
 const SETTINGS_STORAGE_KEY = 'tra_no_tet_settings_v2';
 const SCHEDULES_STORAGE_KEY = 'tra_no_tet_schedules_v2';
 
+// Migration helper to ensure exact real-world 2026-2027 calendar and correct day-of-week
+export function migrateDaysToCorrectYear(daysList: DayData[]): DayData[] {
+  const weekdayShort = ['CN', 'T2', 'T3', 'T4', 'T5', 'T6', 'T7'];
+  const weekdayFull = ['Chủ Nhật', 'Thứ Hai', 'Thứ Ba', 'Thứ Tư', 'Thứ Năm', 'Thứ Sáu', 'Thứ Bảy'];
+
+  return daysList.map((d) => {
+    let newYear = d.year;
+    if (d.month === 11 || d.month === 12) {
+      newYear = 2026;
+    } else if (d.month === 1 || d.month === 2) {
+      newYear = 2027;
+    }
+
+    const dObj = new Date(newYear, d.month - 1, d.day);
+    const wIdx = dObj.getDay();
+    const dateStr = `${newYear}-${String(d.month).padStart(2, '0')}-${String(d.day).padStart(2, '0')}`;
+
+    return {
+      ...d,
+      year: newYear,
+      dateStr,
+      weekdayName: weekdayShort[wIdx],
+      weekdayFull: weekdayFull[wIdx]
+    };
+  });
+}
+
+export function migrateSchedulesToCorrectYear(schedulesList: FixedScheduleItem[]): FixedScheduleItem[] {
+  return schedulesList.map((s) => {
+    let dateStr = s.dateStr;
+    if (dateStr.startsWith('2025-11-')) {
+      dateStr = dateStr.replace('2025-11-', '2026-11-');
+    } else if (dateStr.startsWith('2025-12-')) {
+      dateStr = dateStr.replace('2025-12-', '2026-12-');
+    } else if (dateStr.startsWith('2026-01-')) {
+      dateStr = dateStr.replace('2026-01-', '2027-01-');
+    } else if (dateStr.startsWith('2026-02-')) {
+      dateStr = dateStr.replace('2026-02-', '2027-02-');
+    }
+    return { ...s, dateStr };
+  });
+}
+
 export const App: React.FC = () => {
   // Settings state (Wallets, Target cash, Hourly rate, Daily baselines)
   const [settings, setSettings] = useState<FinanceSettings>(() => {
@@ -73,7 +116,8 @@ export const App: React.FC = () => {
     const saved = localStorage.getItem(SCHEDULES_STORAGE_KEY);
     if (saved) {
       try {
-        return JSON.parse(saved);
+        const parsed = JSON.parse(saved);
+        return migrateSchedulesToCorrectYear(parsed);
       } catch {
         return INITIAL_FIXED_SCHEDULES;
       }
@@ -86,7 +130,8 @@ export const App: React.FC = () => {
     const saved = localStorage.getItem(DAYS_STORAGE_KEY);
     if (saved) {
       try {
-        return JSON.parse(saved);
+        const parsed = JSON.parse(saved);
+        return migrateDaysToCorrectYear(parsed);
       } catch {
         return buildInitialDays();
       }
@@ -167,11 +212,26 @@ export const App: React.FC = () => {
       .then((cloudData) => {
         if (!isMounted) return;
         if (cloudData && cloudData.days && cloudData.settings) {
-          setDays(cloudData.days);
+          const migratedDays = migrateDaysToCorrectYear(cloudData.days);
+          const migratedSchedules = cloudData.schedules
+            ? migrateSchedulesToCorrectYear(cloudData.schedules)
+            : schedules;
+          setDays(migratedDays);
           setSettings(cloudData.settings);
-          if (cloudData.schedules) setSchedules(cloudData.schedules);
+          setSchedules(migratedSchedules);
           setSyncStatus('synced');
           setLastSyncedAt(new Date());
+
+          // If cloud data was stored in old 2025 format, auto upgrade it in the cloud!
+          if (cloudData.days[0]?.year === 2025 || cloudData.days[0]?.dateStr?.startsWith('2025-')) {
+            pushCloudPlan({
+              days: migratedDays,
+              settings: cloudData.settings,
+              schedules: migratedSchedules,
+              updatedAt: new Date().toISOString(),
+              deviceId: getDeviceId()
+            });
+          }
         } else {
           // If empty table, upload our current local plan as baseline
           pushCloudPlan({
@@ -195,9 +255,13 @@ export const App: React.FC = () => {
     const unsubscribe = subscribeToCloudPlan((newPayload) => {
       if (!isMounted) return;
       if (newPayload.days && newPayload.settings) {
-        setDays(newPayload.days);
+        const migratedDays = migrateDaysToCorrectYear(newPayload.days);
+        const migratedSchedules = newPayload.schedules
+          ? migrateSchedulesToCorrectYear(newPayload.schedules)
+          : schedules;
+        setDays(migratedDays);
         setSettings(newPayload.settings);
-        if (newPayload.schedules) setSchedules(newPayload.schedules);
+        setSchedules(migratedSchedules);
         setSyncStatus('synced');
         setLastSyncedAt(new Date());
         soundFx.playCoinSound();
@@ -318,10 +382,10 @@ export const App: React.FC = () => {
     const m2 = calculatedDays.filter((d) => d.month === 2);
 
     return [
-      { id: '11', year: 2025, month: 11, days: m11 },
-      { id: '12', year: 2025, month: 12, days: m12 },
-      { id: '1', year: 2026, month: 1, days: m1 },
-      { id: '2', year: 2026, month: 2, days: m2 },
+      { id: '11', year: 2026, month: 11, days: m11 },
+      { id: '12', year: 2026, month: 12, days: m12 },
+      { id: '1', year: 2027, month: 1, days: m1 },
+      { id: '2', year: 2027, month: 2, days: m2 },
     ];
   }, [calculatedDays]);
 
@@ -905,11 +969,14 @@ export const App: React.FC = () => {
         settings={settings}
         schedules={schedules}
         onApplyCloudData={(newDays, newSettings, newSchedules) => {
-          setDays(newDays);
+          const cleanDays = migrateDaysToCorrectYear(newDays);
+          const cleanSched = migrateSchedulesToCorrectYear(newSchedules);
+          setDays(cleanDays);
           setSettings(newSettings);
-          setSchedules(newSchedules);
+          setSchedules(cleanSched);
           setSyncStatus('synced');
           setLastSyncedAt(new Date());
+          broadcastToCloud(cleanDays, newSettings, cleanSched);
         }}
         syncStatus={syncStatus}
         lastSyncedAt={lastSyncedAt}

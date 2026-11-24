@@ -447,7 +447,7 @@ export const WalletSettingsModal: React.FC<WalletSettingsModalProps> = ({
             {/* Target Cash */}
             <div>
               <label className="block text-xs font-semibold text-zinc-300 mb-1">
-                Mục tiêu số dư gom trước Tết (06/02/2026)
+                Mục tiêu số dư gom trước Tết (06/02/2027)
               </label>
               <div className="relative">
                 <input

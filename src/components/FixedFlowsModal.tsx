@@ -44,7 +44,7 @@ export const FixedFlowsModal: React.FC<FixedFlowsModalProps> = ({
   const [isAdding, setIsAdding] = useState(false);
   const [newName, setNewName] = useState('');
   const [newAmount, setNewAmount] = useState('');
-  const [newDate, setNewDate] = useState('2025-12-01');
+  const [newDate, setNewDate] = useState('2026-12-01');
   const [newType, setNewType] = useState<'income' | 'debt' | 'rent'>('income');
 
   const incomes = items.filter((it) => it.type === 'income');
