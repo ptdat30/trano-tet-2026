@@ -44,6 +44,7 @@ import {
 const DAYS_STORAGE_KEY = 'tra_no_tet_calendar_v2';
 const SETTINGS_STORAGE_KEY = 'tra_no_tet_settings_v2';
 const SCHEDULES_STORAGE_KEY = 'tra_no_tet_schedules_v2';
+const LOCAL_UPDATED_AT_KEY = 'tra_no_local_updated_at_v2';
 
 // Migration helper to ensure exact real-world 2026-2027 calendar and correct day-of-week
 export function migrateDaysToCorrectYear(daysList: DayData[]): DayData[] {
@@ -88,6 +89,50 @@ export function migrateSchedulesToCorrectYear(schedulesList: FixedScheduleItem[]
   });
 }
 
+// Single Source of Truth: Apply master fixed schedules & baseline settings to days
+export function applySchedulesToDays(
+  daysList: DayData[],
+  schedulesList: FixedScheduleItem[],
+  settingsObj: FinanceSettings
+): DayData[] {
+  const foodCost = settingsObj.defaultFoodCost ?? 75000;
+  const highBike = settingsObj.highBikeCost ?? 127000;
+  const lowBike = settingsObj.lowBikeCost ?? 77000;
+
+  return daysList.map((d) => {
+    if (d.isManualOverride) {
+      return d;
+    }
+
+    const matches = schedulesList.filter((s) => s.dateStr === d.dateStr);
+    const incomeItems = matches.filter((s) => s.type === 'income');
+    const debtItems = matches.filter((s) => s.type === 'debt');
+    const rentItems = matches.filter((s) => s.type === 'rent');
+
+    const otherIncome = incomeItems.reduce((acc, curr) => acc + curr.amount, 0);
+    const otherIncomeLabel = incomeItems.map((i) => i.name).join(', ') || undefined;
+
+    const debtPayment = debtItems.reduce((acc, curr) => acc + curr.amount, 0);
+    const debtLabel = debtItems.map((i) => i.name).join(', ') || undefined;
+
+    const rentCost = rentItems.reduce((acc, curr) => acc + curr.amount, 0);
+
+    const isHighBike = d.month === 11 || (d.month === 12 && d.day <= 11);
+    const bikeCost = isHighBike ? highBike : lowBike;
+
+    return {
+      ...d,
+      foodCost,
+      bikeCost,
+      rentCost,
+      debtPayment,
+      debtLabel,
+      otherIncome,
+      otherIncomeLabel
+    };
+  });
+}
+
 export const App: React.FC = () => {
   // Settings state (Wallets, Target cash, Hourly rate, Daily baselines)
   const [settings, setSettings] = useState<FinanceSettings>(() => {
@@ -125,18 +170,40 @@ export const App: React.FC = () => {
     return INITIAL_FIXED_SCHEDULES;
   });
 
-  // Days data state
+  // Days data state - always initialized and re-synced with master schedules
   const [days, setDays] = useState<DayData[]>(() => {
-    const saved = localStorage.getItem(DAYS_STORAGE_KEY);
-    if (saved) {
+    const savedDays = localStorage.getItem(DAYS_STORAGE_KEY);
+    let initialDaysList = buildInitialDays();
+    if (savedDays) {
       try {
-        const parsed = JSON.parse(saved);
-        return migrateDaysToCorrectYear(parsed);
+        initialDaysList = JSON.parse(savedDays);
       } catch {
-        return buildInitialDays();
+        initialDaysList = buildInitialDays();
       }
     }
-    return buildInitialDays();
+    const migrated = migrateDaysToCorrectYear(initialDaysList);
+
+    const savedSchedules = localStorage.getItem(SCHEDULES_STORAGE_KEY);
+    let curSchedules = INITIAL_FIXED_SCHEDULES;
+    if (savedSchedules) {
+      try {
+        curSchedules = migrateSchedulesToCorrectYear(JSON.parse(savedSchedules));
+      } catch {
+        curSchedules = INITIAL_FIXED_SCHEDULES;
+      }
+    }
+
+    const savedSettings = localStorage.getItem(SETTINGS_STORAGE_KEY);
+    let curSettings = DEFAULT_SETTINGS;
+    if (savedSettings) {
+      try {
+        curSettings = { ...DEFAULT_SETTINGS, ...JSON.parse(savedSettings) };
+      } catch {
+        curSettings = DEFAULT_SETTINGS;
+      }
+    }
+
+    return applySchedulesToDays(migrated, curSchedules, curSettings);
   });
 
   const [selectedMonth, setSelectedMonth] = useState<'all' | '11' | '12' | '1' | '2'>('all');
@@ -179,13 +246,16 @@ export const App: React.FC = () => {
     updatedSettings: FinanceSettings,
     updatedSchedules: FixedScheduleItem[]
   ) => {
+    const nowIso = new Date().toISOString();
+    localStorage.setItem(LOCAL_UPDATED_AT_KEY, nowIso);
+
     if (!getSupabaseConfig()) return;
     setSyncStatus('syncing');
     pushCloudPlan({
       days: updatedDays,
       settings: updatedSettings,
       schedules: updatedSchedules,
-      updatedAt: new Date().toISOString(),
+      updatedAt: nowIso,
       deviceId: getDeviceId()
     }).then((success) => {
       if (success) {
@@ -212,15 +282,47 @@ export const App: React.FC = () => {
       .then((cloudData) => {
         if (!isMounted) return;
         if (cloudData && cloudData.days && cloudData.settings) {
-          const migratedDays = migrateDaysToCorrectYear(cloudData.days);
+          const localUpdatedStr = localStorage.getItem(LOCAL_UPDATED_AT_KEY);
+          const localTime = localUpdatedStr ? new Date(localUpdatedStr).getTime() : 0;
+          const cloudTime = cloudData.updatedAt ? new Date(cloudData.updatedAt).getTime() : 0;
+
+          // If local data is newer by more than 1 second, push local data to Cloud
+          if (localTime > cloudTime + 1000) {
+            pushCloudPlan({
+              days,
+              settings,
+              schedules,
+              updatedAt: new Date(localTime).toISOString(),
+              deviceId: getDeviceId()
+            }).then((ok) => {
+              if (!isMounted) return;
+              setSyncStatus(ok ? 'synced' : 'error');
+              if (ok) setLastSyncedAt(new Date());
+            });
+            return;
+          }
+
           const migratedSchedules = cloudData.schedules
             ? migrateSchedulesToCorrectYear(cloudData.schedules)
             : schedules;
+          const migratedDays = applySchedulesToDays(
+            migrateDaysToCorrectYear(cloudData.days),
+            migratedSchedules,
+            cloudData.settings
+          );
+
           setDays(migratedDays);
           setSettings(cloudData.settings);
           setSchedules(migratedSchedules);
           setSyncStatus('synced');
           setLastSyncedAt(new Date());
+
+          localStorage.setItem(DAYS_STORAGE_KEY, JSON.stringify(migratedDays));
+          localStorage.setItem(SETTINGS_STORAGE_KEY, JSON.stringify(cloudData.settings));
+          localStorage.setItem(SCHEDULES_STORAGE_KEY, JSON.stringify(migratedSchedules));
+          if (cloudData.updatedAt) {
+            localStorage.setItem(LOCAL_UPDATED_AT_KEY, cloudData.updatedAt);
+          }
 
           // If cloud data was stored in old 2025 format, auto upgrade it in the cloud!
           if (cloudData.days[0]?.year === 2025 || cloudData.days[0]?.dateStr?.startsWith('2025-')) {
@@ -255,15 +357,28 @@ export const App: React.FC = () => {
     const unsubscribe = subscribeToCloudPlan((newPayload) => {
       if (!isMounted) return;
       if (newPayload.days && newPayload.settings) {
-        const migratedDays = migrateDaysToCorrectYear(newPayload.days);
         const migratedSchedules = newPayload.schedules
           ? migrateSchedulesToCorrectYear(newPayload.schedules)
           : schedules;
+        const migratedDays = applySchedulesToDays(
+          migrateDaysToCorrectYear(newPayload.days),
+          migratedSchedules,
+          newPayload.settings
+        );
+
         setDays(migratedDays);
         setSettings(newPayload.settings);
         setSchedules(migratedSchedules);
         setSyncStatus('synced');
         setLastSyncedAt(new Date());
+
+        localStorage.setItem(DAYS_STORAGE_KEY, JSON.stringify(migratedDays));
+        localStorage.setItem(SETTINGS_STORAGE_KEY, JSON.stringify(newPayload.settings));
+        localStorage.setItem(SCHEDULES_STORAGE_KEY, JSON.stringify(migratedSchedules));
+        if (newPayload.updatedAt) {
+          localStorage.setItem(LOCAL_UPDATED_AT_KEY, newPayload.updatedAt);
+        }
+
         soundFx.playCoinSound();
         setToastMessage({
           type: 'info',
@@ -450,6 +565,11 @@ export const App: React.FC = () => {
       setSettings(updatedSettings);
     }
 
+    const nowIso = new Date().toISOString();
+    localStorage.setItem(DAYS_STORAGE_KEY, JSON.stringify(updatedDays));
+    localStorage.setItem(SETTINGS_STORAGE_KEY, JSON.stringify(updatedSettings));
+    localStorage.setItem(LOCAL_UPDATED_AT_KEY, nowIso);
+
     broadcastToCloud(updatedDays, updatedSettings, schedules);
 
     const isAchieved = earnings >= dynamicDailyKpi;
@@ -502,24 +622,33 @@ export const App: React.FC = () => {
       livingExpense?: number;
     }
   ) => {
+    let updatedDays = days;
+    if (autoRecord) {
+      updatedDays = days.map((d) =>
+        d.id === autoRecord.dayId
+          ? {
+              ...d,
+              actualEarnings: autoRecord.revenue,
+              hoursWorked: autoRecord.hours,
+              ...(autoRecord.livingExpense !== undefined
+                ? { actualLivingExpense: autoRecord.livingExpense }
+                : {})
+            }
+          : d
+      );
+    }
+
+    updatedDays = applySchedulesToDays(updatedDays, schedules, newSettings);
+
+    const nowIso = new Date().toISOString();
+    localStorage.setItem(SETTINGS_STORAGE_KEY, JSON.stringify(newSettings));
+    localStorage.setItem(DAYS_STORAGE_KEY, JSON.stringify(updatedDays));
+    localStorage.setItem(LOCAL_UPDATED_AT_KEY, nowIso);
+
     setSettings(newSettings);
+    setDays(updatedDays);
 
     if (autoRecord) {
-      setDays((prev) =>
-        prev.map((d) =>
-          d.id === autoRecord.dayId
-            ? {
-                ...d,
-                actualEarnings: autoRecord.revenue,
-                hoursWorked: autoRecord.hours,
-                ...(autoRecord.livingExpense !== undefined
-                  ? { actualLivingExpense: autoRecord.livingExpense }
-                  : {})
-              }
-            : d
-        )
-      );
-
       const isAchieved = autoRecord.revenue >= dynamicDailyKpi;
       if (isAchieved) {
         fireKpiCelebration();
@@ -547,7 +676,7 @@ export const App: React.FC = () => {
       });
     }
 
-    broadcastToCloud(days, newSettings, schedules);
+    broadcastToCloud(updatedDays, newSettings, schedules);
   };
 
   // Sync Master Schedules to Days
@@ -557,45 +686,25 @@ export const App: React.FC = () => {
     highBike: number,
     lowBike: number
   ) => {
-    setSchedules(updatedSchedules);
-    setSettings((prev) => ({
-      ...prev,
+    const updatedSettings: FinanceSettings = {
+      ...settings,
       defaultFoodCost: foodCost,
       highBikeCost: highBike,
       lowBikeCost: lowBike
-    }));
+    };
 
-    // Update days with new schedules and baselines
-    setDays((prev) =>
-      prev.map((d) => {
-        const matches = updatedSchedules.filter((s) => s.dateStr === d.dateStr);
-        const incomeItems = matches.filter((s) => s.type === 'income');
-        const debtItems = matches.filter((s) => s.type === 'debt');
-        const rentItems = matches.filter((s) => s.type === 'rent');
+    // Calculate days synchronously using single source of truth
+    const updatedDays = applySchedulesToDays(days, updatedSchedules, updatedSettings);
 
-        const otherIncome = incomeItems.reduce((acc, curr) => acc + curr.amount, 0);
-        const otherIncomeLabel = incomeItems.map((i) => i.name).join(', ') || undefined;
+    const nowIso = new Date().toISOString();
+    localStorage.setItem(SCHEDULES_STORAGE_KEY, JSON.stringify(updatedSchedules));
+    localStorage.setItem(SETTINGS_STORAGE_KEY, JSON.stringify(updatedSettings));
+    localStorage.setItem(DAYS_STORAGE_KEY, JSON.stringify(updatedDays));
+    localStorage.setItem(LOCAL_UPDATED_AT_KEY, nowIso);
 
-        const debtPayment = debtItems.reduce((acc, curr) => acc + curr.amount, 0);
-        const debtLabel = debtItems.map((i) => i.name).join(', ') || undefined;
-
-        const rentCost = rentItems.reduce((acc, curr) => acc + curr.amount, 0);
-
-        const isHighBike = d.month === 11 || (d.month === 12 && d.day <= 11);
-        const bikeCost = isHighBike ? highBike : lowBike;
-
-        return {
-          ...d,
-          foodCost,
-          bikeCost,
-          rentCost,
-          debtPayment,
-          debtLabel,
-          otherIncome,
-          otherIncomeLabel
-        };
-      })
-    );
+    setSchedules(updatedSchedules);
+    setSettings(updatedSettings);
+    setDays(updatedDays);
 
     setToastMessage({
       type: 'success',
@@ -603,13 +712,8 @@ export const App: React.FC = () => {
     });
 
     broadcastToCloud(
-      days,
-      {
-        ...settings,
-        defaultFoodCost: foodCost,
-        highBikeCost: highBike,
-        lowBikeCost: lowBike
-      },
+      updatedDays,
+      updatedSettings,
       updatedSchedules
     );
   };

@@ -23,6 +23,7 @@ export interface DayData {
   rentCost: number;
   debtPayment: number;
   debtLabel?: string;
+  isManualOverride?: boolean;
 }
 
 export interface DayCalculated extends DayData {
