@@ -1,14 +1,50 @@
-import type { DayData, DebtSummary, FinanceSettings } from '../types/finance';
+import type { DayData, DebtSummary, FinanceSettings, FixedScheduleItem } from '../types/finance';
 
 export const INITIAL_CASH = 1000000;
 export const TARGET_CASH = 15000000;
 export const DAILY_KPI = 390000;
 
 export const DEFAULT_SETTINGS: FinanceSettings = {
-  initialCash: 1000000,
+  wallets: {
+    bank: 1000000,
+    app: 0,
+    cash: 0
+  },
   targetCash: 15000000,
-  hourlyRate: 65000
+  hourlyRate: 65000,
+  defaultFoodCost: 75000,
+  highBikeCost: 127000,
+  lowBikeCost: 77000
 };
+
+export const INITIAL_FIXED_SCHEDULES: FixedScheduleItem[] = [
+  // Incomes
+  { id: 'inc-1', dateStr: '2025-11-25', type: 'income', name: 'Mẹ cho + Ứng lương', amount: 4500000, description: '4tr mẹ cho + 500k ứng lương' },
+  { id: 'inc-2', dateStr: '2025-12-10', type: 'income', name: 'Lương công ty', amount: 3000000, description: 'Tiền lương nhận ngày 10/12' },
+  { id: 'inc-3', dateStr: '2025-12-25', type: 'income', name: 'Mẹ cho tiền ăn & nhà', amount: 4000000, description: 'Mẹ cho 4tr ngày 25 hàng tháng' },
+  { id: 'inc-4', dateStr: '2026-01-25', type: 'income', name: 'Mẹ cho tiền ăn & nhà', amount: 4000000, description: 'Mẹ cho 4tr ngày 25 hàng tháng' },
+
+  // Rents
+  { id: 'rent-1', dateStr: '2025-11-25', type: 'rent', name: 'Tiền nhà tháng 11', amount: 1600000, description: 'Trích từ tiền mẹ cho' },
+  { id: 'rent-2', dateStr: '2025-12-25', type: 'rent', name: 'Tiền nhà tháng 12', amount: 1600000, description: 'Trích từ tiền mẹ cho' },
+  { id: 'rent-3', dateStr: '2026-01-25', type: 'rent', name: 'Tiền nhà tháng 1', amount: 1600000, description: 'Trích từ tiền mẹ cho' },
+
+  // Debts
+  { id: 'debt-1', dateStr: '2025-12-04', type: 'debt', name: 'Kredivo kỳ 1', amount: 560000, description: 'Kỳ tháng 12' },
+  { id: 'debt-2', dateStr: '2025-12-07', type: 'debt', name: 'Vay nhanh MoMo', amount: 1158000, description: 'Kỳ tháng 12' },
+  { id: 'debt-3', dateStr: '2025-12-10', type: 'debt', name: 'Home Credit', amount: 947000, description: 'Kỳ tháng 12' },
+  { id: 'debt-4', dateStr: '2025-12-13', type: 'debt', name: 'Vay nhanh Zalo', amount: 575000, description: 'Kỳ tháng 12' },
+  { id: 'debt-5', dateStr: '2025-12-22', type: 'debt', name: 'Vay nhanh Be kỳ 1', amount: 1140000, description: 'Bắt đầu kỳ 1 Be' },
+  { id: 'debt-6', dateStr: '2026-01-04', type: 'debt', name: 'Kredivo kỳ 2', amount: 560000, description: 'Kỳ tháng 1' },
+  { id: 'debt-7', dateStr: '2026-01-05', type: 'debt', name: 'Ví trả sau MoMo', amount: 968000, description: 'Kỳ tháng 1' },
+  { id: 'debt-8', dateStr: '2026-01-07', type: 'debt', name: 'Vay nhanh MoMo', amount: 1158000, description: 'Kỳ tháng 1' },
+  { id: 'debt-9', dateStr: '2026-01-10', type: 'debt', name: 'Home Credit', amount: 947000, description: 'Kỳ tháng 1' },
+  { id: 'debt-10', dateStr: '2026-01-13', type: 'debt', name: 'Vay nhanh Zalo', amount: 575000, description: 'Kỳ tháng 1' },
+  { id: 'debt-11', dateStr: '2026-01-22', type: 'debt', name: 'Vay nhanh Be kỳ 2', amount: 1140000, description: 'Kỳ 2 Be' },
+  { id: 'debt-12', dateStr: '2026-02-01', type: 'debt', name: 'Tất toán Zalo', amount: 942000, description: 'Tất toán dứt điểm Zalo' },
+  { id: 'debt-13', dateStr: '2026-02-04', type: 'debt', name: 'Tất toán Kredivo', amount: 561000, description: 'Tất toán dứt điểm Kredivo' },
+  { id: 'debt-14', dateStr: '2026-02-05', type: 'debt', name: 'Tất toán MoMo', amount: 2008000, description: 'Tất toán dứt điểm ví trả sau MoMo' },
+];
 
 export const DEBT_LIST: DebtSummary[] = [
   { name: 'Kredivo', type: 'small', dueDay: 'Ngày 04', amount: '560.000 đ', plan: 'Trả 3 kỳ: 4/12, 4/1, 4/2 (Tất toán)' },

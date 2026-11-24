@@ -1,12 +1,26 @@
 import React, { useState, useEffect } from 'react';
 import type { DayCalculated } from '../types/finance';
 import { soundFx } from '../utils/sound';
+import { ChevronDown, ChevronUp, Settings2 } from 'lucide-react';
 
 interface DayModalProps {
   isOpen: boolean;
   onClose: () => void;
   day: DayCalculated | null;
-  onSave: (dayId: number, hours: number, earnings: number, livingExpense: number) => void;
+  onSave: (
+    dayId: number,
+    hours: number,
+    earnings: number,
+    livingExpense: number,
+    overrides?: {
+      bikeCost: number;
+      rentCost: number;
+      debtPayment: number;
+      debtLabel?: string;
+      otherIncome: number;
+      otherIncomeLabel?: string;
+    }
+  ) => void;
   onClear: (dayId: number) => void;
 }
 
@@ -26,6 +40,15 @@ export const DayModal: React.FC<DayModalProps> = ({
   const [hours, setHours] = useState<string>('6.0');
   const [livingExpense, setLivingExpense] = useState<string>('75000');
 
+  // Advanced overrides for this specific day
+  const [showAdvanced, setShowAdvanced] = useState(false);
+  const [bikeCost, setBikeCost] = useState<string>(String(day.bikeCost));
+  const [rentCost, setRentCost] = useState<string>(String(day.rentCost));
+  const [debtPayment, setDebtPayment] = useState<string>(String(day.debtPayment));
+  const [debtLabel, setDebtLabel] = useState<string>(day.debtLabel || '');
+  const [otherIncome, setOtherIncome] = useState<string>(String(day.otherIncome));
+  const [otherIncomeLabel, setOtherIncomeLabel] = useState<string>(day.otherIncomeLabel || '');
+
   useEffect(() => {
     if (day) {
       setEarnings(day.actualEarnings !== null ? String(day.actualEarnings) : '');
@@ -35,13 +58,25 @@ export const DayModal: React.FC<DayModalProps> = ({
           ? String(day.actualLivingExpense)
           : String(day.foodCost)
       );
+      setBikeCost(String(day.bikeCost));
+      setRentCost(String(day.rentCost));
+      setDebtPayment(String(day.debtPayment));
+      setDebtLabel(day.debtLabel || '');
+      setOtherIncome(String(day.otherIncome));
+      setOtherIncomeLabel(day.otherIncomeLabel || '');
+      setShowAdvanced(false);
     }
   }, [day]);
 
   const parsedEarnings = parseInt(earnings.replace(/\D/g, ''), 10) || 0;
   const parsedLiving = parseInt(livingExpense.replace(/\D/g, ''), 10) || 0;
-  const totalDayExpense = parsedLiving + day.bikeCost + day.rentCost + day.debtPayment;
-  const dayNetSurplus = (parsedEarnings + day.otherIncome) - totalDayExpense;
+  const parsedBike = parseInt(bikeCost.replace(/\D/g, ''), 10) || 0;
+  const parsedRent = parseInt(rentCost.replace(/\D/g, ''), 10) || 0;
+  const parsedDebt = parseInt(debtPayment.replace(/\D/g, ''), 10) || 0;
+  const parsedIncome = parseInt(otherIncome.replace(/\D/g, ''), 10) || 0;
+
+  const totalDayExpense = parsedLiving + parsedBike + parsedRent + parsedDebt;
+  const dayNetSurplus = (parsedEarnings + parsedIncome) - totalDayExpense;
   const targetKpi = day.dynamicKpiTarget || day.kpiTarget;
 
   const handlePresetEarnings = (val: number) => {
@@ -57,7 +92,14 @@ export const DayModal: React.FC<DayModalProps> = ({
   const handleFormSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     const h = parseFloat(hours) || 0;
-    onSave(day.id, h, parsedEarnings, parsedLiving);
+    onSave(day.id, h, parsedEarnings, parsedLiving, {
+      bikeCost: parsedBike,
+      rentCost: parsedRent,
+      debtPayment: parsedDebt,
+      debtLabel: debtLabel.trim() || undefined,
+      otherIncome: parsedIncome,
+      otherIncomeLabel: otherIncomeLabel.trim() || undefined
+    });
     onClose();
   };
 
@@ -68,7 +110,7 @@ export const DayModal: React.FC<DayModalProps> = ({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/80 backdrop-blur-sm overflow-y-auto">
-      <div className="w-full max-w-md bg-zinc-900 border border-zinc-800 rounded-2xl p-4 sm:p-5 shadow-2xl text-zinc-100 my-auto">
+      <div className="w-full max-w-md bg-zinc-900 border border-zinc-800 rounded-2xl p-4 sm:p-5 shadow-2xl text-zinc-100 max-h-[90vh] overflow-y-auto my-auto">
         {/* Header */}
         <div className="flex items-center justify-between pb-3 border-b border-zinc-800">
           <div>
@@ -93,7 +135,7 @@ export const DayModal: React.FC<DayModalProps> = ({
           <div className="space-y-1.5">
             <div className="flex justify-between items-center">
               <label className="text-xs font-semibold text-zinc-200">
-                1. Tiền chạy xe kiếm được (VNĐ)
+                1. Tiền chạy xe kiếm được hôm nay (VNĐ)
               </label>
               <span className="text-[10px] text-zinc-400">
                 Mục tiêu: {targetKpi / 1000}k
@@ -183,25 +225,25 @@ export const DayModal: React.FC<DayModalProps> = ({
               <span className="text-amber-400 font-semibold">-{parsedLiving.toLocaleString('vi-VN')} đ</span>
             </div>
             <div className="flex justify-between text-zinc-400">
-              <span>Góp xe máy ({day.bikeCost === 127000 ? '127k' : '77k'}):</span>
-              <span className="text-zinc-200">-{day.bikeCost.toLocaleString('vi-VN')} đ</span>
+              <span>Góp xe máy:</span>
+              <span className="text-zinc-200">-{parsedBike.toLocaleString('vi-VN')} đ</span>
             </div>
-            {day.rentCost > 0 && (
+            {parsedRent > 0 && (
               <div className="flex justify-between text-purple-300">
                 <span>Tiền nhà:</span>
-                <span>-{day.rentCost.toLocaleString('vi-VN')} đ</span>
+                <span>-{parsedRent.toLocaleString('vi-VN')} đ</span>
               </div>
             )}
-            {day.debtPayment > 0 && (
+            {parsedDebt > 0 && (
               <div className="flex justify-between text-rose-400 font-semibold">
-                <span>Trả nợ ({day.debtLabel}):</span>
-                <span>-{day.debtPayment.toLocaleString('vi-VN')} đ</span>
+                <span>Trả nợ ({debtLabel || day.debtLabel}):</span>
+                <span>-{parsedDebt.toLocaleString('vi-VN')} đ</span>
               </div>
             )}
-            {day.otherIncome > 0 && (
+            {parsedIncome > 0 && (
               <div className="flex justify-between text-emerald-400 font-semibold">
-                <span>Thu nhập thêm ({day.otherIncomeLabel}):</span>
-                <span>+{day.otherIncome.toLocaleString('vi-VN')} đ</span>
+                <span>Thu nhập thêm ({otherIncomeLabel || day.otherIncomeLabel}):</span>
+                <span>+{parsedIncome.toLocaleString('vi-VN')} đ</span>
               </div>
             )}
 
@@ -216,6 +258,84 @@ export const DayModal: React.FC<DayModalProps> = ({
                 {dayNetSurplus.toLocaleString('vi-VN')} đ
               </span>
             </div>
+          </div>
+
+          {/* Section 4: Expandable Overrides for this specific day */}
+          <div className="border border-zinc-800 rounded-xl overflow-hidden">
+            <button
+              type="button"
+              onClick={() => setShowAdvanced(!showAdvanced)}
+              className="w-full px-3 py-2 bg-zinc-950/60 hover:bg-zinc-800/50 flex items-center justify-between text-xs text-zinc-400 transition"
+            >
+              <span className="flex items-center gap-1.5 font-medium">
+                <Settings2 className="w-3.5 h-3.5 text-emerald-400" strokeWidth={1.5} />
+                <span>Tùy chỉnh thu & chi cố định riêng ngày này</span>
+              </span>
+              {showAdvanced ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
+            </button>
+
+            {showAdvanced && (
+              <div className="p-3 bg-zinc-950 space-y-2.5 text-xs border-t border-zinc-800">
+                {/* Bike Cost override */}
+                <div>
+                  <label className="block text-zinc-400 mb-0.5 text-[11px]">Tiền góp xe ngày này:</label>
+                  <input
+                    type="text"
+                    value={bikeCost ? parsedBike.toLocaleString('vi-VN') : ''}
+                    onChange={(e) => setBikeCost(e.target.value.replace(/\D/g, ''))}
+                    className="w-full bg-zinc-900 border border-zinc-700 rounded-lg px-2.5 py-1.5 text-xs text-zinc-200"
+                  />
+                </div>
+
+                {/* Debt Payment override */}
+                <div className="grid grid-cols-2 gap-2">
+                  <div>
+                    <label className="block text-zinc-400 mb-0.5 text-[11px]">Tên khoản nợ (nếu có):</label>
+                    <input
+                      type="text"
+                      value={debtLabel}
+                      onChange={(e) => setDebtLabel(e.target.value)}
+                      placeholder="VD: Kredivo..."
+                      className="w-full bg-zinc-900 border border-zinc-700 rounded-lg px-2.5 py-1.5 text-xs text-zinc-200"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-zinc-400 mb-0.5 text-[11px]">Số tiền trả nợ:</label>
+                    <input
+                      type="text"
+                      value={debtPayment ? parsedDebt.toLocaleString('vi-VN') : ''}
+                      onChange={(e) => setDebtPayment(e.target.value.replace(/\D/g, ''))}
+                      placeholder="0"
+                      className="w-full bg-zinc-900 border border-zinc-700 rounded-lg px-2.5 py-1.5 text-xs text-rose-400 font-bold"
+                    />
+                  </div>
+                </div>
+
+                {/* Other income override */}
+                <div className="grid grid-cols-2 gap-2">
+                  <div>
+                    <label className="block text-zinc-400 mb-0.5 text-[11px]">Khoản thu thêm (nếu có):</label>
+                    <input
+                      type="text"
+                      value={otherIncomeLabel}
+                      onChange={(e) => setOtherIncomeLabel(e.target.value)}
+                      placeholder="VD: Mẹ cho, Thưởng..."
+                      className="w-full bg-zinc-900 border border-zinc-700 rounded-lg px-2.5 py-1.5 text-xs text-zinc-200"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-zinc-400 mb-0.5 text-[11px]">Số tiền thu:</label>
+                    <input
+                      type="text"
+                      value={otherIncome ? parsedIncome.toLocaleString('vi-VN') : ''}
+                      onChange={(e) => setOtherIncome(e.target.value.replace(/\D/g, ''))}
+                      placeholder="0"
+                      className="w-full bg-zinc-900 border border-zinc-700 rounded-lg px-2.5 py-1.5 text-xs text-emerald-400 font-bold"
+                    />
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
 
           {/* Actions */}

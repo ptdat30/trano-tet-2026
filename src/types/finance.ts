@@ -1,3 +1,9 @@
+export interface WalletBreakdown {
+  bank: number; // Ví tài khoản ngân hàng
+  app: number;  // Ví app tài xế (Be, Grab, v.v.)
+  cash: number; // Ví tiền mặt
+}
+
 export interface DayData {
   id: number; // 1 to 75
   year: number;
@@ -9,7 +15,7 @@ export interface DayData {
   kpiTarget: number; // baseline 390000
   actualEarnings: number | null;
   hoursWorked: number | null;
-  actualLivingExpense: number | null; // User custom daily spent (food, personal, etc.). Defaults to foodCost (75k) if null
+  actualLivingExpense: number | null; // User custom daily spent (food, personal, etc.). Defaults to foodCost if null
   otherIncome: number;
   otherIncomeLabel?: string;
   foodCost: number; // baseline 75000
@@ -30,9 +36,12 @@ export interface DayCalculated extends DayData {
 }
 
 export interface FinanceSettings {
-  initialCash: number; // default 1,000,000
+  wallets: WalletBreakdown;
   targetCash: number; // default 15,000,000
   hourlyRate: number; // default 65,000
+  defaultFoodCost: number; // default 75,000
+  highBikeCost: number; // default 127,000
+  lowBikeCost: number; // default 77,000
 }
 
 export interface MonthBlock {
@@ -48,4 +57,13 @@ export interface DebtSummary {
   dueDay: string;
   amount: number | string;
   plan: string;
+}
+
+export interface FixedScheduleItem {
+  id: string;
+  dateStr: string; // "YYYY-MM-DD"
+  type: 'income' | 'debt' | 'rent';
+  name: string;
+  amount: number;
+  description?: string;
 }

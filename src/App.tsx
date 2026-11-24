@@ -3,12 +3,14 @@ import { CalendarMonth } from './components/CalendarMonth';
 import { DayModal } from './components/DayModal';
 import { DebtListModal } from './components/DebtListModal';
 import { WalletSettingsModal } from './components/WalletSettingsModal';
+import { FixedFlowsModal } from './components/FixedFlowsModal';
 import {
   buildInitialDays,
   DEFAULT_SETTINGS,
+  INITIAL_FIXED_SCHEDULES,
   DAILY_KPI
 } from './data/calendarData';
-import type { DayData, DayCalculated, FinanceSettings } from './types/finance';
+import type { DayData, DayCalculated, FinanceSettings, FixedScheduleItem } from './types/finance';
 import { soundFx } from './utils/sound';
 import { fireKpiCelebration } from './utils/confetti';
 import {
@@ -19,26 +21,52 @@ import {
   VolumeX,
   CreditCard,
   Target,
-  Sliders,
+  DollarSign,
   CheckCircle2,
-  AlertCircle
+  AlertCircle,
+  Building2,
+  Smartphone,
+  Banknote
 } from 'lucide-react';
 
 const DAYS_STORAGE_KEY = 'tra_no_tet_calendar_v2';
 const SETTINGS_STORAGE_KEY = 'tra_no_tet_settings_v2';
+const SCHEDULES_STORAGE_KEY = 'tra_no_tet_schedules_v2';
 
 export const App: React.FC = () => {
-  // Settings state (Initial cash, Target cash, Hourly rate)
+  // Settings state (Wallets, Target cash, Hourly rate, Daily baselines)
   const [settings, setSettings] = useState<FinanceSettings>(() => {
     const saved = localStorage.getItem(SETTINGS_STORAGE_KEY);
     if (saved) {
       try {
-        return JSON.parse(saved);
+        const parsed = JSON.parse(saved);
+        return {
+          ...DEFAULT_SETTINGS,
+          ...parsed,
+          wallets: parsed.wallets || {
+            bank: parsed.initialCash ?? DEFAULT_SETTINGS.wallets.bank,
+            app: 0,
+            cash: 0
+          }
+        };
       } catch {
         return DEFAULT_SETTINGS;
       }
     }
     return DEFAULT_SETTINGS;
+  });
+
+  // Master scheduled items (Incomes, Debts, Rent)
+  const [schedules, setSchedules] = useState<FixedScheduleItem[]>(() => {
+    const saved = localStorage.getItem(SCHEDULES_STORAGE_KEY);
+    if (saved) {
+      try {
+        return JSON.parse(saved);
+      } catch {
+        return INITIAL_FIXED_SCHEDULES;
+      }
+    }
+    return INITIAL_FIXED_SCHEDULES;
   });
 
   // Days data state
@@ -59,6 +87,7 @@ export const App: React.FC = () => {
   const [isDayModalOpen, setIsDayModalOpen] = useState(false);
   const [isDebtModalOpen, setIsDebtModalOpen] = useState(false);
   const [isSettingsModalOpen, setIsSettingsModalOpen] = useState(false);
+  const [isFixedFlowsModalOpen, setIsFixedFlowsModalOpen] = useState(false);
   const [isSoundOn, setIsSoundOn] = useState(true);
   const [toastMessage, setToastMessage] = useState<{ text: string; type: 'success' | 'info' | 'warn' } | null>(null);
 
@@ -71,6 +100,10 @@ export const App: React.FC = () => {
     localStorage.setItem(SETTINGS_STORAGE_KEY, JSON.stringify(settings));
   }, [settings]);
 
+  useEffect(() => {
+    localStorage.setItem(SCHEDULES_STORAGE_KEY, JSON.stringify(schedules));
+  }, [schedules]);
+
   // Auto-hide toast
   useEffect(() => {
     if (!toastMessage) return;
@@ -78,13 +111,19 @@ export const App: React.FC = () => {
     return () => clearTimeout(timer);
   }, [toastMessage]);
 
+  // Total liquid cash across all 3 wallets
+  const totalLiquidWallets = useMemo(() => {
+    const w = settings.wallets || DEFAULT_SETTINGS.wallets;
+    return (w.bank || 0) + (w.app || 0) + (w.cash || 0);
+  }, [settings.wallets]);
+
   // DYNAMIC RECALIBRATION ENGINE
   const { calculatedDays, dynamicDailyKpi, dynamicHoursPerDay, stats } = useMemo(() => {
     const unenteredDays = days.filter((d) => d.actualEarnings === null);
     const enteredDays = days.filter((d) => d.actualEarnings !== null);
 
     // Compute wallet balance after all entered days
-    let runningBalanceEntered = settings.initialCash;
+    let runningBalanceEntered = totalLiquidWallets;
     enteredDays.forEach((d) => {
       const living = d.actualLivingExpense !== null ? d.actualLivingExpense : d.foodCost;
       const totalExp = living + d.bikeCost + d.rentCost + d.debtPayment;
@@ -115,7 +154,7 @@ export const App: React.FC = () => {
     const dynamicHours = Math.round((dynamicKpi / settings.hourlyRate) * 10) / 10;
 
     // Build calculated day objects
-    let rollingBal = settings.initialCash;
+    let rollingBal = totalLiquidWallets;
     const calculated = days.map((d) => {
       const effectiveLiving = d.actualLivingExpense !== null ? d.actualLivingExpense : d.foodCost;
       const totalExpense = effectiveLiving + d.bikeCost + d.rentCost + d.debtPayment;
@@ -165,7 +204,7 @@ export const App: React.FC = () => {
         remainingToTarget
       }
     };
-  }, [days, settings]);
+  }, [days, settings, totalLiquidWallets]);
 
   // Group days by month
   const monthsData = useMemo(() => {
@@ -193,7 +232,20 @@ export const App: React.FC = () => {
     setIsDayModalOpen(true);
   };
 
-  const handleSaveDay = (dayId: number, hours: number, earnings: number, livingExpense: number) => {
+  const handleSaveDay = (
+    dayId: number,
+    hours: number,
+    earnings: number,
+    livingExpense: number,
+    overrides?: {
+      bikeCost: number;
+      rentCost: number;
+      debtPayment: number;
+      debtLabel?: string;
+      otherIncome: number;
+      otherIncomeLabel?: string;
+    }
+  ) => {
     setDays((prev) =>
       prev.map((d) =>
         d.id === dayId
@@ -201,7 +253,17 @@ export const App: React.FC = () => {
               ...d,
               hoursWorked: hours,
               actualEarnings: earnings,
-              actualLivingExpense: livingExpense
+              actualLivingExpense: livingExpense,
+              ...(overrides
+                ? {
+                    bikeCost: overrides.bikeCost,
+                    rentCost: overrides.rentCost,
+                    debtPayment: overrides.debtPayment,
+                    debtLabel: overrides.debtLabel,
+                    otherIncome: overrides.otherIncome,
+                    otherIncomeLabel: overrides.otherIncomeLabel
+                  }
+                : {})
             }
           : d
       )
@@ -216,7 +278,7 @@ export const App: React.FC = () => {
       const surplus = earnings - dynamicDailyKpi;
       setToastMessage({
         type: 'success',
-        text: `Đạt KPI! Kiếm +${earnings.toLocaleString('vi-VN')} đ (dư ${surplus >= 0 ? `+${surplus.toLocaleString('vi-VN')} đ` : '0đ'}). KPI các ngày sau đã được giảm tải!`
+        text: `Đạt KPI! Kiếm +${earnings.toLocaleString('vi-VN')} đ (${surplus >= 0 ? `+${surplus.toLocaleString('vi-VN')} đ` : '0đ'}). KPI các ngày sau đã được giảm tải!`
       });
     } else {
       if (isSoundOn && earnings > 0) {
@@ -253,6 +315,59 @@ export const App: React.FC = () => {
     setToastMessage({
       type: 'success',
       text: 'Đã cập nhật số dư ví & mục tiêu! Toàn bộ KPI các ngày còn lại đã được tính lại chính xác.'
+    });
+  };
+
+  // Sync Master Schedules to Days
+  const handleSaveSchedules = (
+    updatedSchedules: FixedScheduleItem[],
+    foodCost: number,
+    highBike: number,
+    lowBike: number
+  ) => {
+    setSchedules(updatedSchedules);
+    setSettings((prev) => ({
+      ...prev,
+      defaultFoodCost: foodCost,
+      highBikeCost: highBike,
+      lowBikeCost: lowBike
+    }));
+
+    // Update days with new schedules and baselines
+    setDays((prev) =>
+      prev.map((d) => {
+        const matches = updatedSchedules.filter((s) => s.dateStr === d.dateStr);
+        const incomeItems = matches.filter((s) => s.type === 'income');
+        const debtItems = matches.filter((s) => s.type === 'debt');
+        const rentItems = matches.filter((s) => s.type === 'rent');
+
+        const otherIncome = incomeItems.reduce((acc, curr) => acc + curr.amount, 0);
+        const otherIncomeLabel = incomeItems.map((i) => i.name).join(', ') || undefined;
+
+        const debtPayment = debtItems.reduce((acc, curr) => acc + curr.amount, 0);
+        const debtLabel = debtItems.map((i) => i.name).join(', ') || undefined;
+
+        const rentCost = rentItems.reduce((acc, curr) => acc + curr.amount, 0);
+
+        const isHighBike = d.month === 11 || (d.month === 12 && d.day <= 11);
+        const bikeCost = isHighBike ? highBike : lowBike;
+
+        return {
+          ...d,
+          foodCost,
+          bikeCost,
+          rentCost,
+          debtPayment,
+          debtLabel,
+          otherIncome,
+          otherIncomeLabel
+        };
+      })
+    );
+
+    setToastMessage({
+      type: 'success',
+      text: 'Đã cập nhật toàn bộ các khoản thu & chi cố định! Lịch và KPI đã được tính toán lại.'
     });
   };
 
@@ -293,21 +408,33 @@ export const App: React.FC = () => {
                 Lịch Trả Nợ & Tích Lũy Tết 2026
               </h1>
               <p className="text-[11px] text-zinc-400 hidden sm:block">
-                Tự động cân đối KPI theo số dư ví và chi tiêu thực tế từng ngày
+                Quản lý 3 ví (Ngân hàng, App, Tiền mặt) & cân đối thu chi tự động
               </p>
             </div>
           </div>
 
           <div className="flex items-center gap-2">
+            {/* Button: Fixed Flows Manager */}
+            <button
+              onClick={() => setIsFixedFlowsModalOpen(true)}
+              className="px-2.5 py-1.5 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-xs font-semibold text-zinc-200 border border-zinc-700 flex items-center gap-1.5 transition"
+              title="Thay đổi tiền mẹ cho, lương, tiền nhà, nợ hoặc tiền ăn mặc định"
+            >
+              <DollarSign className="w-3.5 h-3.5 text-amber-400" strokeWidth={1.5} />
+              <span className="hidden sm:inline">Thu & Chi Cố Định</span>
+            </button>
+
+            {/* Button: Wallets Manager */}
             <button
               onClick={() => setIsSettingsModalOpen(true)}
               className="px-2.5 py-1.5 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-xs font-semibold text-zinc-200 border border-zinc-700 flex items-center gap-1.5 transition"
-              title="Đổi số dư ví ban đầu hoặc đổi mục tiêu tích lũy"
+              title="Quản lý số dư ngân hàng, ví app tài xế và tiền mặt"
             >
-              <Sliders className="w-3.5 h-3.5 text-emerald-400" strokeWidth={1.5} />
-              <span className="hidden sm:inline">Cài đặt ví</span>
+              <Wallet className="w-3.5 h-3.5 text-emerald-400" strokeWidth={1.5} />
+              <span className="hidden sm:inline">3 Nguồn Ví</span>
             </button>
 
+            {/* Button: Debt List Modal */}
             <button
               onClick={() => setIsDebtModalOpen(true)}
               className="px-2.5 py-1.5 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-xs font-semibold text-zinc-200 border border-zinc-700 flex items-center gap-1.5 transition"
@@ -316,6 +443,7 @@ export const App: React.FC = () => {
               <span>Xem nợ</span>
             </button>
 
+            {/* Sound toggle */}
             <button
               onClick={() => setIsSoundOn(!isSoundOn)}
               title={isSoundOn ? 'Tắt âm thanh' : 'Bật âm thanh'}
@@ -335,21 +463,40 @@ export const App: React.FC = () => {
       <main className="flex-1 max-w-6xl w-full mx-auto px-3 sm:px-4 py-5 space-y-5">
         {/* Dynamic Metrics Row */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-2.5 sm:gap-3">
-          {/* Card 1: Số dư ví hiện tại */}
+          {/* Card 1: Multi-Wallet Breakdown */}
           <div
             onClick={() => setIsSettingsModalOpen(true)}
             className="group cursor-pointer p-3.5 rounded-xl bg-zinc-900/60 border border-zinc-800/80 hover:border-zinc-700 transition"
           >
             <div className="flex items-center justify-between text-zinc-400 text-xs mb-1">
-              <span>Số dư ví hiện tại</span>
+              <span>Tổng tiền đang có (3 ví)</span>
               <Wallet className="w-3.5 h-3.5 text-emerald-400 group-hover:scale-110 transition" strokeWidth={1.5} />
             </div>
             <div className="text-base sm:text-lg font-black text-white">
               {stats.currentBalance.toLocaleString('vi-VN')} đ
             </div>
-            <div className="text-[10px] text-zinc-400 mt-0.5 flex justify-between">
-              <span>Khởi điểm: {settings.initialCash.toLocaleString('vi-VN')} đ</span>
-              <span className="text-emerald-400 font-semibold group-hover:underline">Đổi ✎</span>
+            <div className="text-[10px] text-zinc-400 mt-1 space-y-0.5">
+              <div className="flex justify-between">
+                <span className="flex items-center gap-1">
+                  <Building2 className="w-2.5 h-2.5 text-sky-400" />
+                  <span>NH:</span>
+                </span>
+                <span className="text-sky-300 font-semibold">{((settings.wallets?.bank || 0) / 1000).toLocaleString('vi-VN')}k</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="flex items-center gap-1">
+                  <Smartphone className="w-2.5 h-2.5 text-amber-400" />
+                  <span>App:</span>
+                </span>
+                <span className="text-amber-300 font-semibold">{((settings.wallets?.app || 0) / 1000).toLocaleString('vi-VN')}k</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="flex items-center gap-1">
+                  <Banknote className="w-2.5 h-2.5 text-emerald-400" />
+                  <span>Mặt:</span>
+                </span>
+                <span className="text-emerald-300 font-semibold">{((settings.wallets?.cash || 0) / 1000).toLocaleString('vi-VN')}k</span>
+              </div>
             </div>
           </div>
 
@@ -404,7 +551,7 @@ export const App: React.FC = () => {
             <div className="text-[10px] text-zinc-400 mt-0.5 flex items-center justify-between">
               <span>~{dynamicHoursPerDay}h chạy xe/ngày</span>
               {kpiDiffFromBaseline !== 0 && (
-                <span className={kpiDiffFromBaseline > 0 ? 'text-amber-400' : 'text-emerald-400'}>
+                <span className={kpiDiffFromBaseline > 0 ? 'text-amber-400 font-medium' : 'text-emerald-400 font-medium'}>
                   {kpiDiffFromBaseline > 0 ? `+${Math.round(kpiDiffFromBaseline / 1000)}k` : `${Math.round(kpiDiffFromBaseline / 1000)}k`}
                 </span>
               )}
@@ -424,9 +571,18 @@ export const App: React.FC = () => {
               )}
             </span>
           </div>
-          <span className="text-[11px] text-zinc-400 whitespace-nowrap">
-            Đã hoàn thành {stats.daysAchieved}/{stats.completedDays} ngày đạt KPI
-          </span>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => setIsFixedFlowsModalOpen(true)}
+              className="text-amber-400 hover:text-amber-300 font-semibold underline text-[11px]"
+            >
+              Chỉnh các khoản thu/chi cố định ✎
+            </button>
+            <span className="text-zinc-600">•</span>
+            <span className="text-[11px] text-zinc-400 whitespace-nowrap">
+              Đạt KPI {stats.daysAchieved}/{stats.completedDays} ngày
+            </span>
+          </div>
         </div>
 
         {/* Month Filter Selector */}
@@ -496,6 +652,16 @@ export const App: React.FC = () => {
         settings={settings}
         onClose={() => setIsSettingsModalOpen(false)}
         onSave={handleSaveSettings}
+      />
+
+      <FixedFlowsModal
+        isOpen={isFixedFlowsModalOpen}
+        onClose={() => setIsFixedFlowsModalOpen(false)}
+        schedules={schedules}
+        defaultFoodCost={settings.defaultFoodCost}
+        highBikeCost={settings.highBikeCost}
+        lowBikeCost={settings.lowBikeCost}
+        onSaveSchedules={handleSaveSchedules}
       />
     </div>
   );
