@@ -17,6 +17,11 @@ export interface CloudPayload {
   deviceId: string;
 }
 
+// Clean URL helper
+export function cleanSupabaseUrl(url: string): string {
+  return url.trim().replace(/\/rest\/v1\/?$/, '').replace(/\/+$/, '');
+}
+
 // Generate or retrieve persistent local device ID
 export function getDeviceId(): string {
   let id = localStorage.getItem(DEVICE_ID_KEY);
@@ -27,25 +32,33 @@ export function getDeviceId(): string {
   return id;
 }
 
-// Get saved or env credentials
+// Get saved or env credentials (with default fallback for seamless auto-connect)
 export function getSupabaseConfig(): SupabaseConfig | null {
-  const envUrl = import.meta.env.VITE_SUPABASE_URL;
-  const envKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
-  if (envUrl && envKey) {
-    return { url: envUrl, anonKey: envKey };
-  }
+  const envUrl = import.meta.env.VITE_SUPABASE_URL || 'https://yoskdsgkaoiwcfyncwhn.supabase.co';
+  const envKey = import.meta.env.VITE_SUPABASE_ANON_KEY || 'sb_publishable_wvp7eDycidxFuU5n2IKARQ_wvSZC1re';
 
   const saved = localStorage.getItem(SUPABASE_CONFIG_STORAGE_KEY);
   if (saved) {
     try {
       const parsed = JSON.parse(saved);
       if (parsed.url && parsed.anonKey) {
-        return parsed;
+        return {
+          url: cleanSupabaseUrl(parsed.url),
+          anonKey: parsed.anonKey.trim()
+        };
       }
     } catch {
-      return null;
+      // ignore
     }
   }
+
+  if (envUrl && envKey) {
+    return {
+      url: cleanSupabaseUrl(envUrl),
+      anonKey: envKey.trim()
+    };
+  }
+
   return null;
 }
 
@@ -53,7 +66,7 @@ export function getSupabaseConfig(): SupabaseConfig | null {
 export function saveSupabaseConfig(url: string, anonKey: string) {
   localStorage.setItem(
     SUPABASE_CONFIG_STORAGE_KEY,
-    JSON.stringify({ url: url.trim(), anonKey: anonKey.trim() })
+    JSON.stringify({ url: cleanSupabaseUrl(url), anonKey: anonKey.trim() })
   );
   cachedClient = null; // Reset client
 }

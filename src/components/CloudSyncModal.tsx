@@ -35,22 +35,26 @@ interface CloudSyncModalProps {
 }
 
 const SQL_INIT_SCRIPT = `-- Chạy script này trong tab SQL Editor trên Supabase:
-create table if not exists app_sync (
+create table if not exists public.app_sync (
   id text primary key,
   data jsonb not null,
   updated_at timestamp with time zone default timezone('utc'::text, now()) not null
 );
 
+-- Cấp quyền truy cập bảng cho anon và authenticated
+grant all on table public.app_sync to anon, authenticated, service_role;
+grant usage on schema public to anon, authenticated;
+
 -- Cho phép đọc ghi với public anon key
-alter table app_sync enable row level security;
+alter table public.app_sync enable row level security;
 
 create policy "Allow all on app_sync"
-  on app_sync for all
+  on public.app_sync for all
   using (true)
   with check (true);
 
 -- Bật đồng bộ Realtime qua WebSocket
-alter publication supabase_realtime add table app_sync;
+alter publication supabase_realtime add table public.app_sync;
 `;
 
 export const CloudSyncModal: React.FC<CloudSyncModalProps> = ({
