@@ -1,19 +1,30 @@
 import React, { useState, useEffect } from 'react';
-import type { FinanceSettings } from '../types/finance';
-import { Wallet, Smartphone, Banknote, RotateCcw, Building2 } from 'lucide-react';
+import type { FinanceSettings, DayCalculated } from '../types/finance';
+import { Wallet, Smartphone, Banknote, RotateCcw, Building2, Calculator, CheckSquare, Square } from 'lucide-react';
 import { DEFAULT_SETTINGS } from '../data/calendarData';
 
 interface WalletSettingsModalProps {
   isOpen: boolean;
   onClose: () => void;
   settings: FinanceSettings;
-  onSave: (newSettings: FinanceSettings) => void;
+  days: DayCalculated[];
+  currentWalletBalance: number;
+  onSave: (
+    newSettings: FinanceSettings,
+    autoRecord?: {
+      dayId: number;
+      revenue: number;
+      hours: number;
+    }
+  ) => void;
 }
 
 export const WalletSettingsModal: React.FC<WalletSettingsModalProps> = ({
   isOpen,
   onClose,
   settings,
+  days,
+  currentWalletBalance,
   onSave
 }) => {
   if (!isOpen) return null;
@@ -24,13 +35,24 @@ export const WalletSettingsModal: React.FC<WalletSettingsModalProps> = ({
   const [targetCash, setTargetCash] = useState<string>(String(settings.targetCash ?? 15000000));
   const [hourlyRate, setHourlyRate] = useState<string>(String(settings.hourlyRate ?? 65000));
 
+  // Auto revenue recording state
+  // Default selected day: first unentered day, or day 1
+  const firstUnenteredDay = days.find((d) => d.actualEarnings === null) || days[0];
+  const [selectedDayId, setSelectedDayId] = useState<number>(firstUnenteredDay ? firstUnenteredDay.id : 1);
+  const [shouldAutoRecord, setShouldAutoRecord] = useState<boolean>(true);
+
   useEffect(() => {
     setBank(String(settings.wallets?.bank ?? 1000000));
     setApp(String(settings.wallets?.app ?? 0));
     setCash(String(settings.wallets?.cash ?? 0));
     setTargetCash(String(settings.targetCash ?? 15000000));
     setHourlyRate(String(settings.hourlyRate ?? 65000));
-  }, [settings]);
+
+    const unentered = days.find((d) => d.actualEarnings === null);
+    if (unentered) {
+      setSelectedDayId(unentered.id);
+    }
+  }, [settings, days]);
 
   const parsedBank = parseInt(bank.replace(/\D/g, ''), 10) || 0;
   const parsedApp = parseInt(app.replace(/\D/g, ''), 10) || 0;
@@ -40,18 +62,41 @@ export const WalletSettingsModal: React.FC<WalletSettingsModalProps> = ({
   const parsedTarget = parseInt(targetCash.replace(/\D/g, ''), 10) || 0;
   const parsedRate = parseInt(hourlyRate.replace(/\D/g, ''), 10) || 65000;
 
+  // Auto-calculated daily revenue
+  const balanceDiff = totalCurrent - currentWalletBalance;
+  const targetDay = days.find((d) => d.id === selectedDayId) || days[0];
+
+  const dayLiving = targetDay ? (targetDay.actualLivingExpense !== null ? targetDay.actualLivingExpense : targetDay.foodCost) : 75000;
+  const dayFixedOutflow = targetDay ? (targetDay.bikeCost + targetDay.rentCost + targetDay.debtPayment) : 127000;
+  const totalDayExpenses = dayLiving + dayFixedOutflow;
+  const dayOtherIncome = targetDay ? targetDay.otherIncome : 0;
+
+  // Revenue = (Wallet_new - Wallet_prev) + Total_Day_Expense - Day_Other_Income
+  const rawAutoRevenue = balanceDiff + totalDayExpenses - dayOtherIncome;
+  const autoRevenue = Math.max(0, rawAutoRevenue);
+  const autoHours = Math.round((autoRevenue / parsedRate) * 10) / 10;
+
   const handleFormSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    onSave({
-      ...settings,
-      wallets: {
-        bank: parsedBank,
-        app: parsedApp,
-        cash: parsedCash
+    onSave(
+      {
+        ...settings,
+        wallets: {
+          bank: parsedBank,
+          app: parsedApp,
+          cash: parsedCash
+        },
+        targetCash: parsedTarget,
+        hourlyRate: parsedRate
       },
-      targetCash: parsedTarget,
-      hourlyRate: parsedRate
-    });
+      shouldAutoRecord && targetDay
+        ? {
+            dayId: targetDay.id,
+            revenue: autoRevenue,
+            hours: autoHours
+          }
+        : undefined
+    );
     onClose();
   };
 
@@ -65,7 +110,7 @@ export const WalletSettingsModal: React.FC<WalletSettingsModalProps> = ({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/80 backdrop-blur-sm overflow-y-auto">
-      <div className="w-full max-w-md bg-zinc-900 border border-zinc-800 rounded-2xl p-5 shadow-2xl text-zinc-100 my-auto">
+      <div className="w-full max-w-lg bg-zinc-900 border border-zinc-800 rounded-2xl p-5 shadow-2xl text-zinc-100 max-h-[92vh] overflow-y-auto my-auto">
         {/* Header */}
         <div className="flex items-center justify-between pb-3 border-b border-zinc-800">
           <div className="flex items-center gap-2">
@@ -74,10 +119,10 @@ export const WalletSettingsModal: React.FC<WalletSettingsModalProps> = ({
             </div>
             <div>
               <h3 className="text-sm sm:text-base font-bold text-white">
-                Quản Lý Ví & Nguồn Tiền
+                Cập Nhật Số Dư Ví & Tự Động Tính Doanh Thu
               </h3>
               <p className="text-[11px] text-zinc-400">
-                Cập nhật số dư ngân hàng, ví app tài xế và tiền mặt
+                Nhập số dư hiện tại để hệ thống tự động suy ra tiền chạy xe hôm nay
               </p>
             </div>
           </div>
@@ -91,10 +136,10 @@ export const WalletSettingsModal: React.FC<WalletSettingsModalProps> = ({
 
         {/* Form */}
         <form onSubmit={handleFormSubmit} className="mt-4 space-y-4">
-          {/* Section: 3 Wallets */}
+          {/* Section 1: 3 Wallets */}
           <div className="space-y-3">
             <span className="text-xs font-bold uppercase tracking-wider text-emerald-400">
-              1. Các Nguồn Tiền Hiện Có
+              1. Nhập Số Dư 3 Ví Hiện Tại Lúc Này
             </span>
 
             {/* Wallet 1: Bank Account */}
@@ -125,7 +170,7 @@ export const WalletSettingsModal: React.FC<WalletSettingsModalProps> = ({
                   <Smartphone className="w-3.5 h-3.5 text-amber-400" strokeWidth={1.5} />
                   <span>Ví App tài xế (Be / Grab / Shopee)</span>
                 </label>
-                <span className="text-[10px] text-zinc-400">Tiền trong ví tài xế</span>
+                <span className="text-[10px] text-zinc-400">Tiền còn trong ví tài xế</span>
               </div>
               <div className="relative">
                 <input
@@ -160,26 +205,111 @@ export const WalletSettingsModal: React.FC<WalletSettingsModalProps> = ({
               </div>
             </div>
 
-            {/* Live Total Box */}
-            <div className="p-3 rounded-xl bg-zinc-950 border border-emerald-500/30 flex items-center justify-between">
+            {/* Live Total & Comparison Box */}
+            <div className="p-3 rounded-xl bg-zinc-950 border border-zinc-800 flex items-center justify-between">
               <div>
                 <span className="text-xs font-bold text-zinc-300 block">
-                  Tổng tiền đang có hiện tại:
+                  Tổng 3 ví mới: <span className="text-emerald-400 font-black">{totalCurrent.toLocaleString('vi-VN')} đ</span>
                 </span>
                 <span className="text-[10px] text-zinc-400">
-                  Tự động tính từ cả 3 nguồn ví
+                  Số dư trước khi cập nhật: {currentWalletBalance.toLocaleString('vi-VN')} đ
                 </span>
               </div>
-              <div className="text-base sm:text-lg font-black text-emerald-400">
-                {totalCurrent.toLocaleString('vi-VN')} đ
+              <div className="text-right">
+                <span
+                  className={`text-xs font-bold ${
+                    balanceDiff >= 0 ? 'text-emerald-400' : 'text-rose-400'
+                  }`}
+                >
+                  {balanceDiff >= 0 ? `+${balanceDiff.toLocaleString('vi-VN')}` : balanceDiff.toLocaleString('vi-VN')} đ
+                </span>
+                <span className="text-[10px] text-zinc-400 block">chênh lệch</span>
               </div>
             </div>
           </div>
 
-          {/* Section: Targets */}
+          {/* Section 2: Auto Revenue Calculation */}
+          <div className="space-y-3 pt-3 border-t border-zinc-800">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-bold uppercase tracking-wider text-amber-400 flex items-center gap-1.5">
+                <Calculator className="w-3.5 h-3.5" strokeWidth={1.5} />
+                <span>2. Tự Động Suy Ra Doanh Thu Ngày</span>
+              </span>
+
+              {/* Day Selector */}
+              <div className="flex items-center gap-1.5">
+                <span className="text-[11px] text-zinc-400">Áp dụng cho:</span>
+                <select
+                  value={selectedDayId}
+                  onChange={(e) => setSelectedDayId(parseInt(e.target.value, 10))}
+                  className="bg-zinc-950 border border-zinc-700 text-xs text-amber-300 font-semibold rounded-lg px-2 py-1 focus:outline-none focus:border-amber-500"
+                >
+                  {days.map((d) => (
+                    <option key={d.id} value={d.id}>
+                      Ngày {d.day}/{d.month} ({d.weekdayName}) {d.actualEarnings !== null ? '✓ Đã có' : ''}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
+
+            {/* The Revenue Result Box */}
+            <div className="p-3.5 rounded-xl bg-gradient-to-br from-amber-950/20 to-zinc-950 border border-amber-500/40 space-y-2">
+              <div className="flex justify-between items-start">
+                <div>
+                  <span className="text-xs text-zinc-300 font-medium block">
+                    Doanh thu chạy xe tự động suy ra cho Ngày {targetDay.day}/{targetDay.month}:
+                  </span>
+                  <div className="text-lg sm:text-xl font-black text-amber-400 mt-0.5">
+                    +{autoRevenue.toLocaleString('vi-VN')} đ
+                  </div>
+                </div>
+                <div className="text-right">
+                  <span className="text-xs text-zinc-300 font-bold block">
+                    ~{autoHours} giờ xe
+                  </span>
+                  <span className="text-[10px] text-zinc-400">
+                    KPI: {((targetDay.dynamicKpiTarget || targetDay.kpiTarget) / 1000)}k
+                  </span>
+                </div>
+              </div>
+
+              {/* Formula detail explanation */}
+              <div className="text-[10px] text-zinc-400 bg-zinc-900/80 p-2 rounded-lg border border-zinc-800 space-y-0.5 font-mono">
+                <div>
+                  Công thức: Doanh thu = Chênh lệch ví ({balanceDiff >= 0 ? '+' : ''}{balanceDiff.toLocaleString('vi-VN')}đ)
+                  + Chi phí ({totalDayExpenses.toLocaleString('vi-VN')}đ)
+                  {dayOtherIncome > 0 ? ` - Thu khác (${dayOtherIncome.toLocaleString('vi-VN')}đ)` : ''}
+                </div>
+                <div className="text-zinc-400">
+                  (Chi phí hôm nay: Ăn {dayLiving / 1000}k + Góp xe {targetDay.bikeCost / 1000}k
+                  {targetDay.rentCost > 0 ? ` + Nhà ${targetDay.rentCost / 1000}k` : ''}
+                  {targetDay.debtPayment > 0 ? ` + Nợ ${targetDay.debtPayment / 1000}k` : ''})
+                </div>
+              </div>
+
+              {/* Checkbox: Auto Record */}
+              <button
+                type="button"
+                onClick={() => setShouldAutoRecord(!shouldAutoRecord)}
+                className="flex items-center gap-2 pt-1 text-xs text-zinc-200 hover:text-white cursor-pointer select-none"
+              >
+                {shouldAutoRecord ? (
+                  <CheckSquare className="w-4 h-4 text-emerald-400 shrink-0" />
+                ) : (
+                  <Square className="w-4 h-4 text-zinc-500 shrink-0" />
+                )}
+                <span>
+                  Tự động điền <b>{autoRevenue.toLocaleString('vi-VN')} đ</b> vào Ngày {targetDay.day}/{targetDay.month} trên lịch & cập nhật KPI
+                </span>
+              </button>
+            </div>
+          </div>
+
+          {/* Section 3: Targets */}
           <div className="space-y-3 pt-3 border-t border-zinc-800">
             <span className="text-xs font-bold uppercase tracking-wider text-rose-400">
-              2. Mục Tiêu & Cài Đặt KPI
+              3. Mục Tiêu & Cài Đặt KPI
             </span>
 
             {/* Target Cash */}
@@ -226,7 +356,7 @@ export const WalletSettingsModal: React.FC<WalletSettingsModalProps> = ({
               type="submit"
               className="flex-1 py-2.5 px-4 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-zinc-950 font-bold text-xs sm:text-sm transition shadow-lg shadow-emerald-950/40"
             >
-              Lưu Nguồn Tiền & Cập Nhật KPI
+              Lưu Nguồn Tiền & Ghi Nhận Doanh Thu
             </button>
             <button
               type="button"

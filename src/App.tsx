@@ -310,12 +310,48 @@ export const App: React.FC = () => {
     });
   };
 
-  const handleSaveSettings = (newSettings: FinanceSettings) => {
+  const handleSaveSettings = (
+    newSettings: FinanceSettings,
+    autoRecord?: {
+      dayId: number;
+      revenue: number;
+      hours: number;
+    }
+  ) => {
     setSettings(newSettings);
-    setToastMessage({
-      type: 'success',
-      text: 'Đã cập nhật số dư ví & mục tiêu! Toàn bộ KPI các ngày còn lại đã được tính lại chính xác.'
-    });
+
+    if (autoRecord) {
+      setDays((prev) =>
+        prev.map((d) =>
+          d.id === autoRecord.dayId
+            ? { ...d, actualEarnings: autoRecord.revenue, hoursWorked: autoRecord.hours }
+            : d
+        )
+      );
+
+      const isAchieved = autoRecord.revenue >= dynamicDailyKpi;
+      if (isAchieved) {
+        fireKpiCelebration();
+        if (isSoundOn) {
+          soundFx.playVictoryFanfare();
+        }
+      } else if (isSoundOn && autoRecord.revenue > 0) {
+        soundFx.playCoinSound();
+      }
+
+      const targetD = days.find((d) => d.id === autoRecord.dayId);
+      const dayText = targetD ? `Ngày ${targetD.day}/${targetD.month}` : `Ngày ${autoRecord.dayId}`;
+
+      setToastMessage({
+        type: 'success',
+        text: `Đã cập nhật 3 ví! Tự động suy ra và ghi nhận +${autoRecord.revenue.toLocaleString('vi-VN')} đ vào ${dayText} & cân đối lại KPI!`
+      });
+    } else {
+      setToastMessage({
+        type: 'success',
+        text: 'Đã cập nhật số dư ví & mục tiêu! Toàn bộ KPI các ngày còn lại đã được tính lại chính xác.'
+      });
+    }
   };
 
   // Sync Master Schedules to Days
@@ -637,6 +673,8 @@ export const App: React.FC = () => {
       <DayModal
         isOpen={isDayModalOpen}
         day={selectedDay}
+        currentWalletBalance={stats.currentBalance}
+        hourlyRate={settings.hourlyRate}
         onClose={() => setIsDayModalOpen(false)}
         onSave={handleSaveDay}
         onClear={handleClearDay}
@@ -650,6 +688,8 @@ export const App: React.FC = () => {
       <WalletSettingsModal
         isOpen={isSettingsModalOpen}
         settings={settings}
+        days={calculatedDays}
+        currentWalletBalance={stats.currentBalance}
         onClose={() => setIsSettingsModalOpen(false)}
         onSave={handleSaveSettings}
       />

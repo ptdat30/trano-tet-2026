@@ -1,12 +1,14 @@
 import React, { useState, useEffect } from 'react';
 import type { DayCalculated } from '../types/finance';
 import { soundFx } from '../utils/sound';
-import { ChevronDown, ChevronUp, Settings2 } from 'lucide-react';
+import { ChevronDown, ChevronUp, Settings2, Calculator, Check } from 'lucide-react';
 
 interface DayModalProps {
   isOpen: boolean;
   onClose: () => void;
   day: DayCalculated | null;
+  currentWalletBalance?: number;
+  hourlyRate?: number;
   onSave: (
     dayId: number,
     hours: number,
@@ -31,6 +33,8 @@ export const DayModal: React.FC<DayModalProps> = ({
   isOpen,
   onClose,
   day,
+  currentWalletBalance = 1000000,
+  hourlyRate = 65000,
   onSave,
   onClear
 }) => {
@@ -49,6 +53,12 @@ export const DayModal: React.FC<DayModalProps> = ({
   const [otherIncome, setOtherIncome] = useState<string>(String(day.otherIncome));
   const [otherIncomeLabel, setOtherIncomeLabel] = useState<string>(day.otherIncomeLabel || '');
 
+  // Quick Wallet Calculation
+  const [showWalletCalc, setShowWalletCalc] = useState(false);
+  const [calcBank, setCalcBank] = useState<string>('');
+  const [calcApp, setCalcApp] = useState<string>('');
+  const [calcCash, setCalcCash] = useState<string>('');
+
   useEffect(() => {
     if (day) {
       setEarnings(day.actualEarnings !== null ? String(day.actualEarnings) : '');
@@ -65,6 +75,10 @@ export const DayModal: React.FC<DayModalProps> = ({
       setOtherIncome(String(day.otherIncome));
       setOtherIncomeLabel(day.otherIncomeLabel || '');
       setShowAdvanced(false);
+      setShowWalletCalc(false);
+      setCalcBank('');
+      setCalcApp('');
+      setCalcCash('');
     }
   }, [day]);
 
@@ -78,6 +92,22 @@ export const DayModal: React.FC<DayModalProps> = ({
   const totalDayExpense = parsedLiving + parsedBike + parsedRent + parsedDebt;
   const dayNetSurplus = (parsedEarnings + parsedIncome) - totalDayExpense;
   const targetKpi = day.dynamicKpiTarget || day.kpiTarget;
+
+  // Auto wallet revenue calculation
+  const parsedCalcBank = parseInt(calcBank.replace(/\D/g, ''), 10) || 0;
+  const parsedCalcApp = parseInt(calcApp.replace(/\D/g, ''), 10) || 0;
+  const parsedCalcCash = parseInt(calcCash.replace(/\D/g, ''), 10) || 0;
+  const calcTotalNew = parsedCalcBank + parsedCalcApp + parsedCalcCash;
+  const calcDiff = calcTotalNew - currentWalletBalance;
+  const derivedRevenue = Math.max(0, calcDiff + totalDayExpense - parsedIncome);
+  const derivedHours = Math.round((derivedRevenue / hourlyRate) * 10) / 10;
+
+  const handleApplyWalletRevenue = () => {
+    setEarnings(String(derivedRevenue));
+    setHours(String(derivedHours));
+    setShowWalletCalc(false);
+    soundFx.playCoinSound();
+  };
 
   const handlePresetEarnings = (val: number) => {
     setEarnings(String(val));
@@ -137,10 +167,71 @@ export const DayModal: React.FC<DayModalProps> = ({
               <label className="text-xs font-semibold text-zinc-200">
                 1. Tiền chạy xe kiếm được hôm nay (VNĐ)
               </label>
-              <span className="text-[10px] text-zinc-400">
-                Mục tiêu: {targetKpi / 1000}k
-              </span>
+              <button
+                type="button"
+                onClick={() => setShowWalletCalc(!showWalletCalc)}
+                className="text-[11px] text-amber-400 hover:text-amber-300 font-semibold flex items-center gap-1 transition"
+              >
+                <Calculator className="w-3 h-3" />
+                <span>Chốt ví tính nhanh</span>
+              </button>
             </div>
+
+            {/* Quick Wallet Calculation Accordion */}
+            {showWalletCalc && (
+              <div className="p-3 bg-zinc-950 border border-amber-500/40 rounded-xl space-y-2 animate-in fade-in duration-150">
+                <span className="text-[11px] font-bold text-amber-300 block">
+                  Nhập số dư 3 ví lúc chốt ca hôm nay:
+                </span>
+                <div className="grid grid-cols-3 gap-1.5">
+                  <div>
+                    <label className="text-[9px] text-zinc-400 block mb-0.5">Ngân hàng:</label>
+                    <input
+                      type="text"
+                      placeholder="0"
+                      value={calcBank ? parsedCalcBank.toLocaleString('vi-VN') : ''}
+                      onChange={(e) => setCalcBank(e.target.value.replace(/\D/g, ''))}
+                      className="w-full bg-zinc-900 border border-zinc-700 rounded-lg px-2 py-1 text-xs text-sky-300 font-bold"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-[9px] text-zinc-400 block mb-0.5">Ví App:</label>
+                    <input
+                      type="text"
+                      placeholder="0"
+                      value={calcApp ? parsedCalcApp.toLocaleString('vi-VN') : ''}
+                      onChange={(e) => setCalcApp(e.target.value.replace(/\D/g, ''))}
+                      className="w-full bg-zinc-900 border border-zinc-700 rounded-lg px-2 py-1 text-xs text-amber-300 font-bold"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-[9px] text-zinc-400 block mb-0.5">Tiền mặt:</label>
+                    <input
+                      type="text"
+                      placeholder="0"
+                      value={calcCash ? parsedCalcCash.toLocaleString('vi-VN') : ''}
+                      onChange={(e) => setCalcCash(e.target.value.replace(/\D/g, ''))}
+                      className="w-full bg-zinc-900 border border-zinc-700 rounded-lg px-2 py-1 text-xs text-emerald-300 font-bold"
+                    />
+                  </div>
+                </div>
+
+                <div className="flex items-center justify-between pt-1 border-t border-zinc-800">
+                  <div className="text-[10px] text-zinc-300">
+                    Suy ra doanh thu: <b className="text-amber-400">+{derivedRevenue.toLocaleString('vi-VN')} đ</b> (~{derivedHours}h)
+                  </div>
+                  <button
+                    type="button"
+                    onClick={handleApplyWalletRevenue}
+                    className="px-2.5 py-1 rounded-md bg-amber-500 hover:bg-amber-400 text-zinc-950 font-bold text-xs flex items-center gap-1 shadow"
+                  >
+                    <Check className="w-3 h-3" />
+                    <span>Áp dụng</span>
+                  </button>
+                </div>
+              </div>
+            )}
+
             <input
               type="text"
               autoFocus
