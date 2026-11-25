@@ -62,6 +62,12 @@ export function normalizeDebtChecklist(items?: FixedScheduleItem[] | null): Fixe
       } else if (dateStr.startsWith('2026-02-')) {
         dateStr = dateStr.replace('2026-02-', '2027-02-');
       }
+      // Shift monthly rent due dates from 25th to 10th (10/12 and 10/01)
+      if (s.id === 'rent-2' && dateStr === '2026-12-25') {
+        dateStr = '2026-12-10';
+      } else if (s.id === 'rent-3' && dateStr === '2027-01-25') {
+        dateStr = '2027-01-10';
+      }
       return {
         ...s,
         dateStr,
