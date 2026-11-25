@@ -14,7 +14,8 @@ import {
 } from './lib/supabase';
 import {
   buildInitialDays,
-  DEFAULT_SETTINGS
+  DEFAULT_SETTINGS,
+  INITIAL_DEBT_CHECKLIST
 } from './data/calendarData';
 import type { DayData, DayCalculated, FinanceSettings, FixedScheduleItem } from './types/finance';
 import { soundFx } from './utils/sound';
@@ -39,7 +40,37 @@ import {
 
 const DAYS_STORAGE_KEY = 'tra_no_tet_calendar_v2';
 const SETTINGS_STORAGE_KEY = 'tra_no_tet_settings_v2';
+const SCHEDULES_STORAGE_KEY = 'tra_no_tet_schedules_v2';
 const LOCAL_UPDATED_AT_KEY = 'tra_no_local_updated_at_v2';
+
+// Normalize debt & rent checklist (keeps only debts & upcoming rents, migrates years, preserves isPaid)
+export function normalizeDebtChecklist(items?: FixedScheduleItem[] | null): FixedScheduleItem[] {
+  if (!items || !Array.isArray(items) || items.length === 0) {
+    return INITIAL_DEBT_CHECKLIST;
+  }
+
+  const filtered = items
+    .filter((s) => (s.type === 'debt' || s.type === 'rent') && s.id !== 'rent-1')
+    .map((s) => {
+      let dateStr = s.dateStr;
+      if (dateStr.startsWith('2025-11-')) {
+        dateStr = dateStr.replace('2025-11-', '2026-11-');
+      } else if (dateStr.startsWith('2025-12-')) {
+        dateStr = dateStr.replace('2025-12-', '2026-12-');
+      } else if (dateStr.startsWith('2026-01-')) {
+        dateStr = dateStr.replace('2026-01-', '2027-01-');
+      } else if (dateStr.startsWith('2026-02-')) {
+        dateStr = dateStr.replace('2026-02-', '2027-02-');
+      }
+      return {
+        ...s,
+        dateStr,
+        isPaid: Boolean(s.isPaid)
+      };
+    });
+
+  return filtered.length > 0 ? filtered : INITIAL_DEBT_CHECKLIST;
+}
 
 // Migration helper to ensure exact real-world 2026-2027 calendar and correct day-of-week
 export function migrateDaysToCorrectYear(daysList: DayData[]): DayData[] {
@@ -91,8 +122,18 @@ export const App: React.FC = () => {
     return DEFAULT_SETTINGS;
   });
 
-  // Kept empty for backward compatibility with CloudSync payload
-  const [schedules, setSchedules] = useState<FixedScheduleItem[]>([]);
+  // Debt & Rent Checklist (14 upcoming debts + 2 upcoming rents, with isPaid toggle)
+  const [schedules, setSchedules] = useState<FixedScheduleItem[]>(() => {
+    const saved = localStorage.getItem(SCHEDULES_STORAGE_KEY);
+    if (saved) {
+      try {
+        return normalizeDebtChecklist(JSON.parse(saved));
+      } catch {
+        return INITIAL_DEBT_CHECKLIST;
+      }
+    }
+    return INITIAL_DEBT_CHECKLIST;
+  });
 
   // Days data state (only tracks daily net change / thực thu)
   const [days, setDays] = useState<DayData[]>(() => {
@@ -129,6 +170,10 @@ export const App: React.FC = () => {
   useEffect(() => {
     localStorage.setItem(SETTINGS_STORAGE_KEY, JSON.stringify(settings));
   }, [settings]);
+
+  useEffect(() => {
+    localStorage.setItem(SCHEDULES_STORAGE_KEY, JSON.stringify(schedules));
+  }, [schedules]);
 
   // Auto-hide toast
   useEffect(() => {
@@ -199,13 +244,16 @@ export const App: React.FC = () => {
           }
 
           const migratedDays = migrateDaysToCorrectYear(cloudData.days);
+          const normalizedChecklist = normalizeDebtChecklist(cloudData.schedules);
           setDays(migratedDays);
           setSettings(cloudData.settings);
+          setSchedules(normalizedChecklist);
           setSyncStatus('synced');
           setLastSyncedAt(new Date());
 
           localStorage.setItem(DAYS_STORAGE_KEY, JSON.stringify(migratedDays));
           localStorage.setItem(SETTINGS_STORAGE_KEY, JSON.stringify(cloudData.settings));
+          localStorage.setItem(SCHEDULES_STORAGE_KEY, JSON.stringify(normalizedChecklist));
           if (cloudData.updatedAt) {
             localStorage.setItem(LOCAL_UPDATED_AT_KEY, cloudData.updatedAt);
           }
@@ -232,13 +280,16 @@ export const App: React.FC = () => {
       if (!isMounted) return;
       if (newPayload.days && newPayload.settings) {
         const migratedDays = migrateDaysToCorrectYear(newPayload.days);
+        const normalizedChecklist = normalizeDebtChecklist(newPayload.schedules);
         setDays(migratedDays);
         setSettings(newPayload.settings);
+        setSchedules(normalizedChecklist);
         setSyncStatus('synced');
         setLastSyncedAt(new Date());
 
         localStorage.setItem(DAYS_STORAGE_KEY, JSON.stringify(migratedDays));
         localStorage.setItem(SETTINGS_STORAGE_KEY, JSON.stringify(newPayload.settings));
+        localStorage.setItem(SCHEDULES_STORAGE_KEY, JSON.stringify(normalizedChecklist));
         if (newPayload.updatedAt) {
           localStorage.setItem(LOCAL_UPDATED_AT_KEY, newPayload.updatedAt);
         }
@@ -263,8 +314,10 @@ export const App: React.FC = () => {
     return (w.bank || 0) + (w.app || 0) + (w.cash || 0);
   }, [settings.wallets]);
 
-  // PURE NET-INCOME (THỰC THU) KPI ENGINE
-  // No fixed expenses or fixed incomes — ONLY real 3-wallet balance & daily net change!
+  // PURE NET-INCOME (THỰC THU) + UNPAID DEBT/RENT CHECKLIST KPI ENGINE
+  // - 3 Wallets = Exact real money currently held (NEVER auto-deducted).
+  // - Unpaid debts & rents from Checklist are added to targetCash (15tr) to compute total needed.
+  // - Daily KPI = ceil((targetCash + unpaidObligations - currentWalletBalance) / remainingDays).
   const { calculatedDays, dynamicDailyKpi, baselineDailyKpi, dynamicHoursPerDay, stats } = useMemo(() => {
     const unenteredDays = days.filter((d) => d.actualEarnings === null);
     const enteredDays = days.filter((d) => d.actualEarnings !== null);
@@ -272,33 +325,40 @@ export const App: React.FC = () => {
     // 1. Exact current balance from 3 wallets
     const currentWalletBalance = totalLiquidWallets;
 
-    // 2. Remaining amount needed to hit targetCash
-    const remainingToTarget = Math.max(0, settings.targetCash - currentWalletBalance);
+    // 2. Unpaid debts & upcoming rents from Checklist
+    const unpaidItems = schedules.filter((item) => !item.isPaid);
+    const unpaidObligationsTotal = unpaidItems.reduce((sum, item) => sum + item.amount, 0);
+    const totalAllObligations = schedules.reduce((sum, item) => sum + item.amount, 0);
 
-    // 3. Daily net income (Thực thu) needed across remaining unentered days
+    // 3. Total target = 15tr Tết savings + all unpaid debts & rents
+    const totalGoalWithDebts = settings.targetCash + unpaidObligationsTotal;
+    const remainingToTarget = Math.max(0, totalGoalWithDebts - currentWalletBalance);
+
+    // 4. Daily net income (Thực thu) needed across remaining unentered days
     let dynamicKpi = 0;
     if (unenteredDays.length > 0 && remainingToTarget > 0) {
       const rawKpi = remainingToTarget / unenteredDays.length;
       dynamicKpi = Math.ceil(rawKpi / 1000) * 1000;
     }
 
-    // Baseline daily net target for progress comparison (starting from initialCash over total days)
+    // Baseline daily net target for progress comparison
     const startCash = settings.initialCash ?? 1000000;
     const baselineKpi =
       days.length > 0
-        ? Math.ceil(Math.max(0, settings.targetCash - startCash) / days.length / 1000) * 1000
+        ? Math.ceil(Math.max(0, settings.targetCash + totalAllObligations - startCash) / days.length / 1000) * 1000
         : 0;
 
     const dynamicHours =
       settings.hourlyRate > 0 ? Math.round((dynamicKpi / settings.hourlyRate) * 10) / 10 : 0;
 
-    // 4. Build calculated day objects
+    // 5. Build calculated day objects with matching checklist reminder items
     const calculated: DayCalculated[] = days.map((d) => {
       const isEntered = d.actualEarnings !== null;
       const netEarned = isEntered ? d.actualEarnings! : 0;
       const targetForDay = isEntered ? (d.kpiTarget || baselineKpi) : dynamicKpi;
       const kpiDiff = isEntered ? netEarned - targetForDay : null;
       const isKpiAchieved = isEntered && netEarned >= targetForDay;
+      const dayChecklist = schedules.filter((item) => item.dateStr === d.dateStr);
 
       return {
         ...d,
@@ -308,11 +368,12 @@ export const App: React.FC = () => {
         runningBalance: currentWalletBalance,
         kpiDiff,
         isKpiAchieved,
-        dynamicKpiTarget: dynamicKpi
+        dynamicKpiTarget: dynamicKpi,
+        checklistItems: dayChecklist
       };
     });
 
-    // 5. High-level statistics
+    // 6. High-level statistics
     const totalNetEarned = enteredDays.reduce((sum, d) => sum + (d.actualEarnings || 0), 0);
     const averageDailyNet =
       enteredDays.length > 0 ? Math.round(totalNetEarned / enteredDays.length) : 0;
@@ -330,10 +391,13 @@ export const App: React.FC = () => {
         completedDays: enteredDays.length,
         unenteredDaysCount: unenteredDays.length,
         daysAchieved,
-        remainingToTarget
+        remainingToTarget,
+        unpaidObligationsTotal,
+        unpaidCount: unpaidItems.length,
+        totalGoalWithDebts
       }
     };
-  }, [days, settings, totalLiquidWallets]);
+  }, [days, settings, schedules, totalLiquidWallets]);
 
   // Group days by month
   const monthsData = useMemo(() => {
@@ -497,6 +561,14 @@ export const App: React.FC = () => {
     broadcastToCloud(updatedDays, newSettings, schedules);
   };
 
+  const handleUpdateChecklist = (updatedChecklist: FixedScheduleItem[]) => {
+    const nowIso = new Date().toISOString();
+    localStorage.setItem(SCHEDULES_STORAGE_KEY, JSON.stringify(updatedChecklist));
+    localStorage.setItem(LOCAL_UPDATED_AT_KEY, nowIso);
+    setSchedules(updatedChecklist);
+    broadcastToCloud(days, settings, updatedChecklist);
+  };
+
   const kpiDiffFromBaseline = dynamicDailyKpi - baselineDailyKpi;
 
   return (
@@ -586,14 +658,19 @@ export const App: React.FC = () => {
               <span className="hidden sm:inline">3 Ví</span>
             </button>
 
-            {/* 3. Button: Debt List Modal (Read-only reference) */}
+            {/* 3. Button: Debt & Rent Checklist Modal */}
             <button
               onClick={() => setIsDebtModalOpen(true)}
-              className="h-8 w-8 sm:w-auto sm:px-2.5 rounded-xl bg-zinc-900/80 hover:bg-zinc-800 text-xs font-semibold text-zinc-200 border border-zinc-800 flex items-center justify-center gap-1.5 transition"
-              title="Xem ghi chú danh sách các khoản nợ"
+              className="relative h-8 w-8 sm:w-auto sm:px-2.5 rounded-xl bg-zinc-900/80 hover:bg-zinc-800 text-xs font-semibold text-zinc-200 border border-zinc-800 flex items-center justify-center gap-1.5 transition"
+              title="Checklist Nợ & Tiền Nhà (Tick Đã trả)"
             >
               <CreditCard className="w-4 h-4 text-purple-400 shrink-0" strokeWidth={1.5} />
-              <span className="hidden sm:inline">Xem nợ</span>
+              <span className="hidden sm:inline">Nợ ({stats.unpaidCount})</span>
+              {stats.unpaidCount > 0 && (
+                <span className="sm:hidden absolute -top-1 -right-1 min-w-[14px] h-[14px] px-0.5 rounded-full bg-rose-500 text-[9px] font-bold text-white flex items-center justify-center leading-none">
+                  {stats.unpaidCount}
+                </span>
+              )}
             </button>
 
             {/* 4. Button: Sound toggle */}
@@ -673,25 +750,29 @@ export const App: React.FC = () => {
             </div>
           </div>
 
-          {/* Card 3: Mục tiêu */}
+          {/* Card 3: Mục tiêu (15tr + Nợ & Tiền nhà chưa trả) */}
           <div
-            onClick={() => setIsSettingsModalOpen(true)}
+            onClick={() => setIsDebtModalOpen(true)}
             className="group cursor-pointer p-3 sm:p-3.5 rounded-2xl bg-zinc-900/60 backdrop-blur-md border border-white/10 hover:border-rose-500/40 shadow-lg shadow-black/40 transition"
           >
             <div className="flex items-center justify-between text-zinc-400 text-xs mb-1">
-              <span>Mục tiêu ({settings.targetCash / 1000000}tr)</span>
+              <span>Mục tiêu ({settings.targetCash / 1000000}tr + Nợ)</span>
               <Target className="w-3.5 h-3.5 text-rose-400 group-hover:scale-110 transition" strokeWidth={1.5} />
             </div>
             <div className="text-base sm:text-lg font-black text-white">
-              {stats.currentBalance >= settings.targetCash ? (
-                <span className="text-emerald-400">Đã đạt mục tiêu! 🎉</span>
+              {stats.remainingToTarget === 0 ? (
+                <span className="text-emerald-400">Đã đủ hết! 🎉</span>
               ) : (
                 <span>Thiếu {stats.remainingToTarget.toLocaleString('vi-VN')} đ</span>
               )}
             </div>
-            <div className="text-[10px] text-zinc-400 mt-1 flex justify-between">
-              <span>{Math.min(100, Math.round((stats.currentBalance / settings.targetCash) * 100))}% mục tiêu</span>
-              <span className="text-rose-400 font-semibold group-hover:underline">Đổi ✎</span>
+            <div className="text-[10px] text-zinc-400 mt-1 flex justify-between items-center gap-1">
+              <span className="truncate">
+                Nợ/Nhà còn: {(stats.unpaidObligationsTotal / 1000000).toFixed(2)}tr
+              </span>
+              <span className="text-purple-400 font-semibold group-hover:underline shrink-0">
+                Tick ✓
+              </span>
             </div>
           </div>
 
@@ -807,6 +888,8 @@ export const App: React.FC = () => {
       <DebtListModal
         isOpen={isDebtModalOpen}
         onClose={() => setIsDebtModalOpen(false)}
+        checklist={schedules}
+        onUpdateChecklist={handleUpdateChecklist}
       />
 
       <WalletSettingsModal
@@ -825,12 +908,13 @@ export const App: React.FC = () => {
         schedules={schedules}
         onApplyCloudData={(newDays, newSettings, newSchedules) => {
           const cleanDays = migrateDaysToCorrectYear(newDays);
+          const cleanChecklist = normalizeDebtChecklist(newSchedules);
           setDays(cleanDays);
           setSettings(newSettings);
-          setSchedules(newSchedules || []);
+          setSchedules(cleanChecklist);
           setSyncStatus('synced');
           setLastSyncedAt(new Date());
-          broadcastToCloud(cleanDays, newSettings, newSchedules || []);
+          broadcastToCloud(cleanDays, newSettings, cleanChecklist);
         }}
         syncStatus={syncStatus}
         lastSyncedAt={lastSyncedAt}

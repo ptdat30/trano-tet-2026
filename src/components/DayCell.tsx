@@ -12,6 +12,7 @@ export const DayCell: React.FC<DayCellProps> = ({ day, onClick }) => {
   const isTargetAchieved = day.isKpiAchieved;
   const isNegative = isEntered && netVal < 0;
   const isWeekend = day.weekdayName === 'T7' || day.weekdayName === 'CN';
+  const checklistItems = day.checklistItems || [];
 
   const formatShortK = (val: number): string => {
     const absK = Math.round(Math.abs(val) / 1000);
@@ -23,7 +24,7 @@ export const DayCell: React.FC<DayCellProps> = ({ day, onClick }) => {
   return (
     <button
       onClick={() => onClick(day)}
-      className={`group relative flex flex-col justify-between p-2 sm:p-2.5 min-h-[5.25rem] sm:min-h-[6rem] rounded-xl border text-left transition-all ${
+      className={`group relative flex flex-col justify-between p-1.5 sm:p-2.5 min-h-[5.5rem] sm:min-h-[6.25rem] rounded-xl border text-left transition-all ${
         isEntered
           ? isNegative
             ? 'bg-rose-950/35 border-rose-500/45 hover:border-rose-400'
@@ -55,8 +56,30 @@ export const DayCell: React.FC<DayCellProps> = ({ day, onClick }) => {
         )}
       </div>
 
+      {/* Middle: Debt & Rent Checklist Reminder Tags (Visual only, never auto-deducts) */}
+      {checklistItems.length > 0 && (
+        <div className="my-auto w-full space-y-0.5 py-0.5">
+          {checklistItems.map((item) => (
+            <div
+              key={item.id}
+              className={`text-[8px] sm:text-[10px] leading-tight px-1 py-0.5 rounded truncate border font-semibold ${
+                item.isPaid
+                  ? 'bg-emerald-500/10 text-emerald-400/70 border-emerald-500/20 line-through'
+                  : item.type === 'rent'
+                  ? 'bg-purple-500/15 text-purple-300 border-purple-500/30'
+                  : 'bg-rose-500/15 text-rose-300 border-rose-500/30'
+              }`}
+              title={`${item.name}: ${item.amount.toLocaleString('vi-VN')} đ${item.isPaid ? ' (Đã trả)' : ''}`}
+            >
+              {item.isPaid ? '✓ ' : ''}
+              {item.name}
+            </div>
+          ))}
+        </div>
+      )}
+
       {/* Footer: Net Change (Thực thu) or Remaining Daily Target */}
-      <div className="w-full pt-1.5 border-t border-zinc-800/70 flex items-center justify-between text-[10px] sm:text-xs">
+      <div className="w-full pt-1 border-t border-zinc-800/70 flex items-center justify-between text-[10px] sm:text-xs">
         {isEntered ? (
           <>
             <span

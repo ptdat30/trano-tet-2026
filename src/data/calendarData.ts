@@ -47,6 +47,32 @@ export const INITIAL_FIXED_SCHEDULES: FixedScheduleItem[] = [
   { id: 'debt-14', dateStr: '2027-02-05', type: 'debt', name: 'Tất toán MoMo', amount: 2008000, description: 'Tất toán dứt điểm ví trả sau MoMo' },
 ];
 
+// Full verified checklist of upcoming debts (14 items = 13.239tr) + upcoming rents (2 items = 3.2tr)
+// Total initial unpaid obligations = 16.439.000 đ
+export const INITIAL_DEBT_CHECKLIST: FixedScheduleItem[] = [
+  // Tháng 12/2026
+  { id: 'debt-1', dateStr: '2026-12-04', type: 'debt', name: 'Kredivo kỳ 1/3', amount: 560000, description: 'Kỳ tháng 12', isPaid: false },
+  { id: 'debt-2', dateStr: '2026-12-07', type: 'debt', name: 'Vay nhanh MoMo kỳ 1', amount: 1158000, description: 'Kỳ tháng 12', isPaid: false },
+  { id: 'debt-3', dateStr: '2026-12-10', type: 'debt', name: 'Home Credit kỳ 1', amount: 947000, description: 'Kỳ tháng 12', isPaid: false },
+  { id: 'debt-4', dateStr: '2026-12-13', type: 'debt', name: 'Vay nhanh Zalo kỳ 1', amount: 575000, description: 'Kỳ tháng 12', isPaid: false },
+  { id: 'debt-5', dateStr: '2026-12-22', type: 'debt', name: 'Vay nhanh Be kỳ 1/12', amount: 1140000, description: 'Kỳ tháng 12', isPaid: false },
+  { id: 'rent-2', dateStr: '2026-12-25', type: 'rent', name: 'Tiền nhà tháng 12', amount: 1600000, description: 'Tiền phòng tháng 12', isPaid: false },
+
+  // Tháng 01/2027
+  { id: 'debt-6', dateStr: '2027-01-04', type: 'debt', name: 'Kredivo kỳ 2/3', amount: 560000, description: 'Kỳ tháng 1', isPaid: false },
+  { id: 'debt-7', dateStr: '2027-01-05', type: 'debt', name: 'Ví trả sau MoMo kỳ 1', amount: 968000, description: 'Kỳ tháng 1', isPaid: false },
+  { id: 'debt-8', dateStr: '2027-01-07', type: 'debt', name: 'Vay nhanh MoMo kỳ 2', amount: 1158000, description: 'Kỳ tháng 1', isPaid: false },
+  { id: 'debt-9', dateStr: '2027-01-10', type: 'debt', name: 'Home Credit kỳ 2', amount: 947000, description: 'Kỳ tháng 1', isPaid: false },
+  { id: 'debt-10', dateStr: '2027-01-13', type: 'debt', name: 'Vay nhanh Zalo kỳ 2', amount: 575000, description: 'Kỳ tháng 1', isPaid: false },
+  { id: 'debt-11', dateStr: '2027-01-22', type: 'debt', name: 'Vay nhanh Be kỳ 2/12', amount: 1140000, description: 'Kỳ tháng 1', isPaid: false },
+  { id: 'rent-3', dateStr: '2027-01-25', type: 'rent', name: 'Tiền nhà tháng 1', amount: 1600000, description: 'Tiền phòng tháng 1', isPaid: false },
+
+  // Tháng 02/2027 (Tất toán trước Tết)
+  { id: 'debt-12', dateStr: '2027-02-01', type: 'debt', name: 'Tất toán Zalo', amount: 942000, description: 'Xóa sổ hoàn toàn Zalo', isPaid: false },
+  { id: 'debt-13', dateStr: '2027-02-04', type: 'debt', name: 'Tất toán Kredivo cuối', amount: 561000, description: 'Xóa sổ hoàn toàn Kredivo', isPaid: false },
+  { id: 'debt-14', dateStr: '2027-02-05', type: 'debt', name: 'Tất toán Ví trả sau MoMo', amount: 2008000, description: 'Xóa sổ hoàn toàn Ví trả sau MoMo', isPaid: false },
+];
+
 export const DEBT_LIST: DebtSummary[] = [
   { name: 'Kredivo', type: 'small', dueDay: 'Ngày 04', amount: '560.000 đ', plan: 'Trả 3 kỳ: 4/12, 4/1, 4/2 (Tất toán)' },
   { name: 'Vay nhanh Zalo', type: 'small', dueDay: 'Ngày 13', amount: '575.000 đ', plan: 'Trả 2 kỳ (13/12, 13/1) + Tất toán 942k ngày 01/02' },

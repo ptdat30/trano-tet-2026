@@ -34,6 +34,7 @@ export interface DayCalculated extends DayData {
   kpiDiff: number | null;
   isKpiAchieved: boolean;
   dynamicKpiTarget: number;
+  checklistItems?: FixedScheduleItem[];
 }
 
 export interface FinanceSettings {
@@ -68,4 +69,5 @@ export interface FixedScheduleItem {
   name: string;
   amount: number;
   description?: string;
+  isPaid?: boolean;
 }
