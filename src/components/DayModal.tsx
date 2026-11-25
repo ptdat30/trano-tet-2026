@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import type { DayCalculated, WalletBreakdown } from '../types/finance';
 import { soundFx } from '../utils/sound';
-import { ChevronDown, ChevronUp, Settings2, Wallet, Info } from 'lucide-react';
+import { Calculator, Check, Plus, Minus } from 'lucide-react';
 
 interface DayModalProps {
   isOpen: boolean;
@@ -12,16 +12,7 @@ interface DayModalProps {
   onSave: (
     dayId: number,
     hours: number,
-    earnings: number,
-    livingExpense: number,
-    overrides?: {
-      bikeCost: number;
-      rentCost: number;
-      debtPayment: number;
-      debtLabel?: string;
-      otherIncome: number;
-      otherIncomeLabel?: string;
-    },
+    netEarned: number,
     walletUpdate?: {
       bank: number;
       app: number;
@@ -31,8 +22,7 @@ interface DayModalProps {
   onClear: (dayId: number) => void;
 }
 
-const PRESET_EARNINGS = [250000, 300000, 390000, 420000, 500000];
-const PRESET_EXPENSES = [0, 50000, 75000, 100000, 150000];
+const PRESET_NET_AMOUNTS = [100000, 150000, 200000, 300000, 400000];
 
 export const DayModal: React.FC<DayModalProps> = ({
   isOpen,
@@ -43,114 +33,89 @@ export const DayModal: React.FC<DayModalProps> = ({
   onSave,
   onClear
 }) => {
-  const [earnings, setEarnings] = useState<string>('');
-  const [hours, setHours] = useState<string>('0');
-  const [livingExpense, setLivingExpense] = useState<string>('0');
+  const [isNegative, setIsNegative] = useState<boolean>(false);
+  const [amountAbs, setAmountAbs] = useState<string>('');
+  const [hours, setHours] = useState<string>('');
 
-  // Planned fixed-flow notes (for KPI calculation only)
-  const [showAdvanced, setShowAdvanced] = useState(false);
-  const [bikeCost, setBikeCost] = useState<string>('0');
-  const [rentCost, setRentCost] = useState<string>('0');
-  const [debtPayment, setDebtPayment] = useState<string>('0');
-  const [debtLabel, setDebtLabel] = useState<string>('');
-  const [otherIncome, setOtherIncome] = useState<string>('0');
-  const [otherIncomeLabel, setOtherIncomeLabel] = useState<string>('');
-
-  // Optional direct 3-wallet update (no auto-deduction)
-  const [showWalletUpdate, setShowWalletUpdate] = useState(false);
-  const [editBank, setEditBank] = useState<string>('');
-  const [editApp, setEditApp] = useState<string>('');
-  const [editCash, setEditCash] = useState<string>('');
+  // Optional calculator: derive Thực thu directly from new 3-wallet balances
+  const [showWalletCalc, setShowWalletCalc] = useState<boolean>(false);
+  const [calcBank, setCalcBank] = useState<string>('');
+  const [calcApp, setCalcApp] = useState<string>('');
+  const [calcCash, setCalcCash] = useState<string>('');
+  const [walletChanged, setWalletChanged] = useState<boolean>(false);
 
   useEffect(() => {
     if (isOpen && day) {
-      setEarnings(day.actualEarnings !== null ? String(day.actualEarnings) : '');
-      setHours(day.hoursWorked !== null ? String(day.hoursWorked) : '6.0');
-      setLivingExpense(
-        day.actualLivingExpense !== null ? String(day.actualLivingExpense) : '0'
-      );
-      setBikeCost(String(day.bikeCost));
-      setRentCost(String(day.rentCost));
-      setDebtPayment(String(day.debtPayment));
-      setDebtLabel(day.debtLabel || '');
-      setOtherIncome(String(day.otherIncome));
-      setOtherIncomeLabel(day.otherIncomeLabel || '');
-      setShowAdvanced(false);
-      setShowWalletUpdate(false);
-      setEditBank(String(currentWallets.bank || 0));
-      setEditApp(String(currentWallets.app || 0));
-      setEditCash(String(currentWallets.cash || 0));
+      if (day.actualEarnings !== null) {
+        setIsNegative(day.actualEarnings < 0);
+        setAmountAbs(String(Math.abs(day.actualEarnings)));
+      } else {
+        setIsNegative(false);
+        setAmountAbs('');
+      }
+      setHours(day.hoursWorked !== null && day.hoursWorked > 0 ? String(day.hoursWorked) : '');
+      setShowWalletCalc(false);
+      setCalcBank(String(currentWallets.bank || 0));
+      setCalcApp(String(currentWallets.app || 0));
+      setCalcCash(String(currentWallets.cash || 0));
+      setWalletChanged(false);
     }
   }, [isOpen, day, currentWallets]);
 
   if (!isOpen || !day) return null;
 
-  const parsedEarnings = parseInt(earnings.replace(/\D/g, ''), 10) || 0;
-  const parsedLiving = parseInt(livingExpense.replace(/\D/g, ''), 10) || 0;
-  const parsedBike = parseInt(bikeCost.replace(/\D/g, ''), 10) || 0;
-  const parsedRent = parseInt(rentCost.replace(/\D/g, ''), 10) || 0;
-  const parsedDebt = parseInt(debtPayment.replace(/\D/g, ''), 10) || 0;
-  const parsedIncome = parseInt(otherIncome.replace(/\D/g, ''), 10) || 0;
+  const parsedAbs = parseInt(amountAbs.replace(/\D/g, ''), 10) || 0;
+  const signedNet = isNegative ? -parsedAbs : parsedAbs;
 
-  const parsedEditBank = parseInt(editBank.replace(/\D/g, ''), 10) || 0;
-  const parsedEditApp = parseInt(editApp.replace(/\D/g, ''), 10) || 0;
-  const parsedEditCash = parseInt(editCash.replace(/\D/g, ''), 10) || 0;
-  const editWalletsTotal = parsedEditBank + parsedEditApp + parsedEditCash;
+  const prevWalletTotal =
+    (currentWallets.bank || 0) +
+    (currentWallets.app || 0) +
+    (currentWallets.cash || 0);
+
+  const parsedCalcBank = parseInt(calcBank.replace(/\D/g, ''), 10) || 0;
+  const parsedCalcApp = parseInt(calcApp.replace(/\D/g, ''), 10) || 0;
+  const parsedCalcCash = parseInt(calcCash.replace(/\D/g, ''), 10) || 0;
+  const calcNewTotal = parsedCalcBank + parsedCalcApp + parsedCalcCash;
+  const walletDiff = calcNewTotal - prevWalletTotal;
 
   const targetKpi = day.dynamicKpiTarget || day.kpiTarget;
 
-  const handlePresetEarnings = (val: number) => {
-    setEarnings(String(val));
+  const handleApplyWalletDiff = () => {
+    setIsNegative(walletDiff < 0);
+    setAmountAbs(String(Math.abs(walletDiff)));
+    setWalletChanged(true);
+    setShowWalletCalc(false);
+    soundFx.playCoinSound();
+  };
+
+  const handlePreset = (val: number) => {
+    setIsNegative(false);
+    setAmountAbs(String(val));
     if (hourlyRate > 0) {
       setHours(String(Math.round((val / hourlyRate) * 10) / 10));
     }
     soundFx.playCoinSound();
   };
 
-  const handlePresetExpense = (val: number) => {
-    setLivingExpense(String(val));
-    soundFx.playCoinSound();
-  };
-
   const handleFormSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     const h = parseFloat(hours) || 0;
-
-    // Only mark overrides if user actually changed any planned fixed-flow field for this day
-    const hasOverrideChange =
-      parsedBike !== day.bikeCost ||
-      parsedRent !== day.rentCost ||
-      parsedDebt !== day.debtPayment ||
-      (debtLabel.trim() || '') !== (day.debtLabel || '') ||
-      parsedIncome !== day.otherIncome ||
-      (otherIncomeLabel.trim() || '') !== (day.otherIncomeLabel || '');
-
-    const hasWalletChange =
-      showWalletUpdate &&
-      (parsedEditBank !== (currentWallets.bank || 0) ||
-        parsedEditApp !== (currentWallets.app || 0) ||
-        parsedEditCash !== (currentWallets.cash || 0));
+    const shouldUpdateWallets =
+      walletChanged ||
+      (showWalletCalc &&
+        (parsedCalcBank !== (currentWallets.bank || 0) ||
+          parsedCalcApp !== (currentWallets.app || 0) ||
+          parsedCalcCash !== (currentWallets.cash || 0)));
 
     onSave(
       day.id,
       h,
-      parsedEarnings,
-      parsedLiving,
-      hasOverrideChange
+      signedNet,
+      shouldUpdateWallets
         ? {
-            bikeCost: parsedBike,
-            rentCost: parsedRent,
-            debtPayment: parsedDebt,
-            debtLabel: debtLabel.trim() || undefined,
-            otherIncome: parsedIncome,
-            otherIncomeLabel: otherIncomeLabel.trim() || undefined
-          }
-        : undefined,
-      hasWalletChange
-        ? {
-            bank: parsedEditBank,
-            app: parsedEditApp,
-            cash: parsedEditCash
+            bank: parsedCalcBank,
+            app: parsedCalcApp,
+            cash: parsedCalcCash
           }
         : undefined
     );
@@ -172,8 +137,8 @@ export const DayModal: React.FC<DayModalProps> = ({
               {day.weekdayFull}, Ngày {day.day}/{day.month}
             </h3>
             <p className="text-[11px] text-zinc-400">
-              Ngày {day.id}/75 • Mục tiêu KPI:{' '}
-              <span className="text-amber-400 font-semibold">
+              Ngày {day.id}/75 • Cần thực thu:{' '}
+              <span className="text-emerald-400 font-semibold">
                 {targetKpi.toLocaleString('vi-VN')} đ
               </span>
             </p>
@@ -188,272 +153,180 @@ export const DayModal: React.FC<DayModalProps> = ({
         </div>
 
         {/* Form */}
-        <form onSubmit={handleFormSubmit} className="mt-3.5 space-y-3.5">
-          {/* Section 1: Driving Earnings Note */}
-          <div className="space-y-1.5">
+        <form onSubmit={handleFormSubmit} className="mt-4 space-y-4">
+          {/* Section 1: Net Change (Thực thu) */}
+          <div className="space-y-2">
             <div className="flex justify-between items-center">
               <label className="text-xs font-semibold text-zinc-200">
-                1. Ghi chú tiền chạy xe kiếm được (VNĐ)
+                Thực thu hôm nay (thay đổi số dư ví)
               </label>
-              <span className="text-[10px] text-zinc-400">Chỉ ghi chú ngày</span>
+              <button
+                type="button"
+                onClick={() => setShowWalletCalc(!showWalletCalc)}
+                className="text-[11px] text-amber-400 hover:text-amber-300 font-semibold flex items-center gap-1 transition"
+              >
+                <Calculator className="w-3.5 h-3.5" strokeWidth={1.5} />
+                <span>Tính từ 3 ví</span>
+              </button>
             </div>
 
-            <input
-              type="text"
-              autoFocus
-              value={earnings ? parsedEarnings.toLocaleString('vi-VN') : ''}
-              onChange={(e) => setEarnings(e.target.value.replace(/\D/g, ''))}
-              placeholder="VD: 400.000 (hoặc 0 nếu nghỉ)"
-              className="w-full bg-zinc-950 border border-zinc-700 rounded-xl px-3.5 py-2 text-base sm:text-lg font-black text-emerald-400 focus:outline-none focus:border-emerald-500"
-            />
-            {/* Quick Earnings Presets */}
+            {/* Optional 3-Wallet Diff Calculator */}
+            {showWalletCalc && (
+              <div className="p-3 bg-zinc-950 border border-amber-500/40 rounded-xl space-y-2.5">
+                <div className="flex items-center justify-between">
+                  <span className="text-[11px] font-bold text-amber-300">
+                    Nhập số dư 3 ví mới:
+                  </span>
+                  <span className="text-[10px] text-zinc-400">
+                    Hiện tại: {prevWalletTotal.toLocaleString('vi-VN')} đ
+                  </span>
+                </div>
+                <div className="grid grid-cols-3 gap-1.5">
+                  <div>
+                    <label className="text-[9px] text-zinc-400 block mb-0.5">Ngân hàng:</label>
+                    <input
+                      type="text"
+                      placeholder="0"
+                      value={calcBank ? parsedCalcBank.toLocaleString('vi-VN') : ''}
+                      onChange={(e) => setCalcBank(e.target.value.replace(/\D/g, ''))}
+                      className="w-full bg-zinc-900 border border-zinc-700 rounded-lg px-2 py-1 text-xs text-sky-300 font-bold"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-[9px] text-zinc-400 block mb-0.5">Ví App:</label>
+                    <input
+                      type="text"
+                      placeholder="0"
+                      value={calcApp ? parsedCalcApp.toLocaleString('vi-VN') : ''}
+                      onChange={(e) => setCalcApp(e.target.value.replace(/\D/g, ''))}
+                      className="w-full bg-zinc-900 border border-zinc-700 rounded-lg px-2 py-1 text-xs text-amber-300 font-bold"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-[9px] text-zinc-400 block mb-0.5">Tiền mặt:</label>
+                    <input
+                      type="text"
+                      placeholder="0"
+                      value={calcCash ? parsedCalcCash.toLocaleString('vi-VN') : ''}
+                      onChange={(e) => setCalcCash(e.target.value.replace(/\D/g, ''))}
+                      className="w-full bg-zinc-900 border border-zinc-700 rounded-lg px-2 py-1 text-xs text-emerald-300 font-bold"
+                    />
+                  </div>
+                </div>
+                <div className="flex items-center justify-between pt-1.5 border-t border-zinc-800">
+                  <div className="text-[11px]">
+                    <span className="text-zinc-400">Thực thu: </span>
+                    <b className={walletDiff >= 0 ? 'text-emerald-400' : 'text-rose-400'}>
+                      {walletDiff >= 0 ? '+' : ''}
+                      {walletDiff.toLocaleString('vi-VN')} đ
+                    </b>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={handleApplyWalletDiff}
+                    className="px-2.5 py-1.5 rounded-lg bg-amber-500 hover:bg-amber-400 text-zinc-950 font-bold text-xs flex items-center gap-1"
+                  >
+                    <Check className="w-3.5 h-3.5" strokeWidth={2} />
+                    <span>Áp dụng</span>
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* Sign toggle + Amount Input */}
+            <div className="flex items-center gap-2">
+              <div className="flex rounded-xl overflow-hidden border border-zinc-700 shrink-0">
+                <button
+                  type="button"
+                  onClick={() => setIsNegative(false)}
+                  title="Tăng (+)"
+                  className={`px-2.5 py-2.5 flex items-center justify-center transition ${
+                    !isNegative
+                      ? 'bg-emerald-500 text-zinc-950 font-bold'
+                      : 'bg-zinc-950 text-zinc-400 hover:text-white'
+                  }`}
+                >
+                  <Plus className="w-4 h-4" strokeWidth={2} />
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setIsNegative(true)}
+                  title="Giảm (-)"
+                  className={`px-2.5 py-2.5 flex items-center justify-center transition ${
+                    isNegative
+                      ? 'bg-rose-500 text-white font-bold'
+                      : 'bg-zinc-950 text-zinc-400 hover:text-white'
+                  }`}
+                >
+                  <Minus className="w-4 h-4" strokeWidth={2} />
+                </button>
+              </div>
+
+              <div className="relative flex-1">
+                <input
+                  type="text"
+                  autoFocus
+                  value={amountAbs ? parsedAbs.toLocaleString('vi-VN') : ''}
+                  onChange={(e) => setAmountAbs(e.target.value.replace(/\D/g, ''))}
+                  placeholder="VD: 200.000"
+                  className={`w-full bg-zinc-950 border border-zinc-700 rounded-xl px-3.5 py-2 text-base sm:text-lg font-black focus:outline-none ${
+                    isNegative
+                      ? 'text-rose-400 focus:border-rose-500'
+                      : 'text-emerald-400 focus:border-emerald-500'
+                  }`}
+                />
+                <span className="absolute right-3.5 top-2.5 text-xs text-zinc-400">VNĐ</span>
+              </div>
+            </div>
+
+            {/* Quick Presets */}
             <div className="grid grid-cols-5 gap-1 pt-0.5">
-              {PRESET_EARNINGS.map((amt) => (
+              {PRESET_NET_AMOUNTS.map((amt) => (
                 <button
                   key={amt}
                   type="button"
-                  onClick={() => handlePresetEarnings(amt)}
+                  onClick={() => handlePreset(amt)}
                   className={`py-1 text-[11px] font-semibold rounded-lg border transition ${
-                    parsedEarnings === amt
+                    !isNegative && parsedAbs === amt
                       ? 'bg-emerald-500 text-zinc-950 border-emerald-400 font-bold'
                       : 'bg-zinc-800/80 text-zinc-300 border-zinc-700 hover:bg-zinc-700'
                   }`}
                 >
-                  {amt / 1000}k
+                  +{amt / 1000}k
                 </button>
               ))}
             </div>
+
+            {walletChanged && (
+              <p className="text-[11px] text-emerald-400">
+                ✓ Sẽ tự động cập nhật tổng 3 ví thành <b>{calcNewTotal.toLocaleString('vi-VN')} đ</b> khi lưu.
+              </p>
+            )}
           </div>
 
-          {/* Section 2: Hours */}
+          {/* Section 2: Optional Hours */}
           <div>
             <label className="block text-xs font-semibold text-zinc-300 mb-1">
-              Số giờ chạy xe thực tế
+              Số giờ làm / chạy xe (tùy chọn)
             </label>
             <input
               type="number"
               step="0.5"
               value={hours}
               onChange={(e) => setHours(e.target.value)}
-              className="w-full bg-zinc-950 border border-zinc-700 rounded-xl px-3 py-1.5 text-xs text-white focus:outline-none focus:border-zinc-500"
+              placeholder="VD: 6"
+              className="w-full bg-zinc-950 border border-zinc-700 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-zinc-500"
             />
-          </div>
-
-          {/* Section 3: Daily Living Expense Note (Optional) */}
-          <div className="space-y-1.5 pt-1 border-t border-zinc-800/60">
-            <div className="flex justify-between items-center">
-              <label className="text-xs font-semibold text-zinc-200">
-                2. Ghi chú tiền đã tiêu hôm nay (tùy chọn)
-              </label>
-              <span className="text-[10px] text-zinc-400">Không tự trừ ví</span>
-            </div>
-            <input
-              type="text"
-              value={livingExpense ? parsedLiving.toLocaleString('vi-VN') : ''}
-              onChange={(e) => setLivingExpense(e.target.value.replace(/\D/g, ''))}
-              placeholder="0"
-              className="w-full bg-zinc-950 border border-zinc-700 rounded-xl px-3.5 py-2 text-sm sm:text-base font-bold text-amber-400 focus:outline-none focus:border-amber-500"
-            />
-            <div className="grid grid-cols-5 gap-1 pt-0.5">
-              {PRESET_EXPENSES.map((amt) => (
-                <button
-                  key={amt}
-                  type="button"
-                  onClick={() => handlePresetExpense(amt)}
-                  className={`py-1 text-[11px] font-semibold rounded-lg border transition ${
-                    parsedLiving === amt
-                      ? 'bg-amber-500 text-zinc-950 border-amber-400 font-bold'
-                      : 'bg-zinc-800/80 text-zinc-300 border-zinc-700 hover:bg-zinc-700'
-                  }`}
-                >
-                  {amt === 0 ? '0k' : `${amt / 1000}k`}
-                </button>
-              ))}
-            </div>
-          </div>
-
-          {/* Planned Reference Note Box (Strictly Informational — Does Not Auto-Deduct Wallets) */}
-          <div className="p-3 rounded-xl bg-zinc-950 border border-zinc-800 text-xs space-y-1.5 text-zinc-300">
-            <div className="flex items-center gap-1.5 text-[11px] font-semibold text-sky-300 pb-1 border-b border-zinc-800/80">
-              <Info className="w-3.5 h-3.5 text-sky-400 shrink-0" strokeWidth={1.5} />
-              <span>Khoản dự tính ngày này (chỉ note tính KPI — không tự trừ ví)</span>
-            </div>
-            <div className="flex justify-between text-zinc-400 text-[11px]">
-              <span>• Dự tính góp xe:</span>
-              <span className="text-zinc-200">{parsedBike.toLocaleString('vi-VN')} đ</span>
-            </div>
-            {parsedRent > 0 && (
-              <div className="flex justify-between text-purple-300 text-[11px]">
-                <span>• Dự tính tiền nhà:</span>
-                <span>{parsedRent.toLocaleString('vi-VN')} đ</span>
-              </div>
-            )}
-            {parsedDebt > 0 && (
-              <div className="flex justify-between text-rose-400 text-[11px] font-semibold">
-                <span>• Dự tính trả nợ ({debtLabel || day.debtLabel}):</span>
-                <span>{parsedDebt.toLocaleString('vi-VN')} đ</span>
-              </div>
-            )}
-            {parsedIncome > 0 && (
-              <div className="flex justify-between text-emerald-400 text-[11px] font-semibold">
-                <span>• Dự tính thu thêm ({otherIncomeLabel || day.otherIncomeLabel}):</span>
-                <span>+{parsedIncome.toLocaleString('vi-VN')} đ</span>
-              </div>
-            )}
-          </div>
-
-          {/* Optional Direct 3-Wallet Update Accordion */}
-          <div className="border border-zinc-800 rounded-xl overflow-hidden">
-            <button
-              type="button"
-              onClick={() => setShowWalletUpdate(!showWalletUpdate)}
-              className="w-full px-3 py-2 bg-zinc-950/60 hover:bg-zinc-800/50 flex items-center justify-between text-xs text-zinc-300 transition"
-            >
-              <span className="flex items-center gap-1.5 font-medium">
-                <Wallet className="w-3.5 h-3.5 text-emerald-400" strokeWidth={1.5} />
-                <span>Cập nhật trực tiếp số dư 3 ví thực tế</span>
-              </span>
-              {showWalletUpdate ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
-            </button>
-
-            {showWalletUpdate && (
-              <div className="p-3 bg-zinc-950 space-y-2 text-xs border-t border-zinc-800">
-                <div className="grid grid-cols-3 gap-1.5">
-                  <div>
-                    <label className="text-[10px] text-zinc-400 block mb-0.5">Ngân hàng:</label>
-                    <input
-                      type="text"
-                      value={editBank ? parsedEditBank.toLocaleString('vi-VN') : ''}
-                      onChange={(e) => setEditBank(e.target.value.replace(/\D/g, ''))}
-                      placeholder="0"
-                      className="w-full bg-zinc-900 border border-zinc-700 rounded-lg px-2 py-1.5 text-xs text-sky-300 font-bold"
-                    />
-                  </div>
-                  <div>
-                    <label className="text-[10px] text-zinc-400 block mb-0.5">Ví App:</label>
-                    <input
-                      type="text"
-                      value={editApp ? parsedEditApp.toLocaleString('vi-VN') : ''}
-                      onChange={(e) => setEditApp(e.target.value.replace(/\D/g, ''))}
-                      placeholder="0"
-                      className="w-full bg-zinc-900 border border-zinc-700 rounded-lg px-2 py-1.5 text-xs text-amber-300 font-bold"
-                    />
-                  </div>
-                  <div>
-                    <label className="text-[10px] text-zinc-400 block mb-0.5">Tiền mặt:</label>
-                    <input
-                      type="text"
-                      value={editCash ? parsedEditCash.toLocaleString('vi-VN') : ''}
-                      onChange={(e) => setEditCash(e.target.value.replace(/\D/g, ''))}
-                      placeholder="0"
-                      className="w-full bg-zinc-900 border border-zinc-700 rounded-lg px-2 py-1.5 text-xs text-emerald-300 font-bold"
-                    />
-                  </div>
-                </div>
-                <div className="text-[11px] text-zinc-400 flex justify-between pt-1 border-t border-zinc-800/80">
-                  <span>Tổng 3 ví sau khi lưu:</span>
-                  <span className="text-emerald-400 font-bold">{editWalletsTotal.toLocaleString('vi-VN')} đ</span>
-                </div>
-              </div>
-            )}
-          </div>
-
-          {/* Section 4: Expandable Overrides for this specific day's KPI projection */}
-          <div className="border border-zinc-800 rounded-xl overflow-hidden">
-            <button
-              type="button"
-              onClick={() => setShowAdvanced(!showAdvanced)}
-              className="w-full px-3 py-2 bg-zinc-950/60 hover:bg-zinc-800/50 flex items-center justify-between text-xs text-zinc-400 transition"
-            >
-              <span className="flex items-center gap-1.5 font-medium">
-                <Settings2 className="w-3.5 h-3.5 text-amber-400" strokeWidth={1.5} />
-                <span>Sửa dự tính thu/chi riêng ngày này (tính KPI)</span>
-              </span>
-              {showAdvanced ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
-            </button>
-
-            {showAdvanced && (
-              <div className="p-3 bg-zinc-950 space-y-2.5 text-xs border-t border-zinc-800">
-                <div className="grid grid-cols-2 gap-2">
-                  <div>
-                    <label className="block text-zinc-400 mb-0.5 text-[11px]">Góp xe dự tính:</label>
-                    <input
-                      type="text"
-                      value={bikeCost ? parsedBike.toLocaleString('vi-VN') : ''}
-                      onChange={(e) => setBikeCost(e.target.value.replace(/\D/g, ''))}
-                      className="w-full bg-zinc-900 border border-zinc-700 rounded-lg px-2.5 py-1.5 text-xs text-zinc-200"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-zinc-400 mb-0.5 text-[11px]">Tiền nhà dự tính:</label>
-                    <input
-                      type="text"
-                      value={rentCost ? parsedRent.toLocaleString('vi-VN') : ''}
-                      onChange={(e) => setRentCost(e.target.value.replace(/\D/g, ''))}
-                      placeholder="0"
-                      className="w-full bg-zinc-900 border border-zinc-700 rounded-lg px-2.5 py-1.5 text-xs text-purple-300"
-                    />
-                  </div>
-                </div>
-
-                {/* Debt Payment override */}
-                <div className="grid grid-cols-2 gap-2">
-                  <div>
-                    <label className="block text-zinc-400 mb-0.5 text-[11px]">Note khoản nợ:</label>
-                    <input
-                      type="text"
-                      value={debtLabel}
-                      onChange={(e) => setDebtLabel(e.target.value)}
-                      placeholder="VD: Kredivo..."
-                      className="w-full bg-zinc-900 border border-zinc-700 rounded-lg px-2.5 py-1.5 text-xs text-zinc-200"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-zinc-400 mb-0.5 text-[11px]">Số tiền dự chi:</label>
-                    <input
-                      type="text"
-                      value={debtPayment ? parsedDebt.toLocaleString('vi-VN') : ''}
-                      onChange={(e) => setDebtPayment(e.target.value.replace(/\D/g, ''))}
-                      placeholder="0"
-                      className="w-full bg-zinc-900 border border-zinc-700 rounded-lg px-2.5 py-1.5 text-xs text-rose-400 font-bold"
-                    />
-                  </div>
-                </div>
-
-                {/* Other income override */}
-                <div className="grid grid-cols-2 gap-2">
-                  <div>
-                    <label className="block text-zinc-400 mb-0.5 text-[11px]">Note khoản thu thêm:</label>
-                    <input
-                      type="text"
-                      value={otherIncomeLabel}
-                      onChange={(e) => setOtherIncomeLabel(e.target.value)}
-                      placeholder="VD: Mẹ cho, Thưởng..."
-                      className="w-full bg-zinc-900 border border-zinc-700 rounded-lg px-2.5 py-1.5 text-xs text-zinc-200"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-zinc-400 mb-0.5 text-[11px]">Số tiền dự thu:</label>
-                    <input
-                      type="text"
-                      value={otherIncome ? parsedIncome.toLocaleString('vi-VN') : ''}
-                      onChange={(e) => setOtherIncome(e.target.value.replace(/\D/g, ''))}
-                      placeholder="0"
-                      className="w-full bg-zinc-900 border border-zinc-700 rounded-lg px-2.5 py-1.5 text-xs text-emerald-400 font-bold"
-                    />
-                  </div>
-                </div>
-              </div>
-            )}
           </div>
 
           {/* Actions */}
-          <div className="flex items-center gap-2 pt-1">
+          <div className="flex items-center gap-2 pt-2 border-t border-zinc-800">
             <button
               type="submit"
               className="flex-1 py-2.5 px-4 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-zinc-950 font-bold text-xs sm:text-sm transition shadow-lg shadow-emerald-950/40"
             >
-              Lưu Ghi Chú
+              Lưu Thực Thu ({signedNet >= 0 ? '+' : ''}
+              {signedNet.toLocaleString('vi-VN')} đ)
             </button>
             {day.actualEarnings !== null && (
               <button

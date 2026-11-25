@@ -8,8 +8,7 @@ import {
   Building2,
   CheckSquare,
   Square,
-  NotebookPen,
-  Info
+  NotebookPen
 } from 'lucide-react';
 import { DEFAULT_SETTINGS } from '../data/calendarData';
 
@@ -20,16 +19,13 @@ interface WalletSettingsModalProps {
   days: DayCalculated[];
   onSave: (
     newSettings: FinanceSettings,
-    autoRecord?: {
+    recordNet?: {
       dayId: number;
-      revenue: number;
+      netEarned: number;
       hours: number;
-      livingExpense: number;
     }
   ) => void;
 }
-
-const PRESET_LIVING_AMOUNTS = [0, 50000, 75000, 100000, 150000];
 
 export const WalletSettingsModal: React.FC<WalletSettingsModalProps> = ({
   isOpen,
@@ -44,12 +40,10 @@ export const WalletSettingsModal: React.FC<WalletSettingsModalProps> = ({
   const [targetCash, setTargetCash] = useState<string>(String(settings.targetCash ?? 15000000));
   const [hourlyRate, setHourlyRate] = useState<string>(String(settings.hourlyRate ?? 65000));
 
-  // Optional day note recording — OFF by default so editing wallets NEVER overwrites calendar days unexpectedly
+  // Optional: record wallet change directly as today's Thực thu
   const firstUnenteredDay = days.find((d) => d.actualEarnings === null) || days[0];
   const [selectedDayId, setSelectedDayId] = useState<number>(firstUnenteredDay ? firstUnenteredDay.id : 1);
-  const [shouldNoteDay, setShouldNoteDay] = useState<boolean>(false);
-  const [noteRevenue, setNoteRevenue] = useState<string>('');
-  const [noteLivingExpense, setNoteLivingExpense] = useState<string>('0');
+  const [shouldRecordNet, setShouldRecordNet] = useState<boolean>(false);
 
   useEffect(() => {
     if (!isOpen) return;
@@ -58,9 +52,7 @@ export const WalletSettingsModal: React.FC<WalletSettingsModalProps> = ({
     setCash(String(settings.wallets?.cash ?? 0));
     setTargetCash(String(settings.targetCash ?? 15000000));
     setHourlyRate(String(settings.hourlyRate ?? 65000));
-    setShouldNoteDay(false);
-    setNoteRevenue('');
-    setNoteLivingExpense('0');
+    setShouldRecordNet(false);
 
     const unentered = days.find((d) => d.actualEarnings === null);
     if (unentered) {
@@ -85,17 +77,10 @@ export const WalletSettingsModal: React.FC<WalletSettingsModalProps> = ({
 
   const parsedTarget = parseInt(targetCash.replace(/\D/g, ''), 10) || 0;
   const parsedRate = parseInt(hourlyRate.replace(/\D/g, ''), 10) || 65000;
-  const parsedNoteRevenue = parseInt(noteRevenue.replace(/\D/g, ''), 10) || 0;
-  const parsedNoteLiving = parseInt(noteLivingExpense.replace(/\D/g, ''), 10) || 0;
-  const noteHours = parsedRate > 0 ? Math.round((parsedNoteRevenue / parsedRate) * 10) / 10 : 0;
-
-  const handleToggleNoteDay = () => {
-    const next = !shouldNoteDay;
-    setShouldNoteDay(next);
-    if (next && !noteRevenue && balanceDiff > 0) {
-      setNoteRevenue(String(Math.round(balanceDiff / 1000) * 1000));
-    }
-  };
+  const estimatedHours =
+    balanceDiff > 0 && parsedRate > 0
+      ? Math.round((balanceDiff / parsedRate) * 10) / 10
+      : 0;
 
   const handleFormSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -110,12 +95,11 @@ export const WalletSettingsModal: React.FC<WalletSettingsModalProps> = ({
         targetCash: parsedTarget,
         hourlyRate: parsedRate
       },
-      shouldNoteDay && targetDay
+      shouldRecordNet && targetDay
         ? {
             dayId: targetDay.id,
-            revenue: parsedNoteRevenue,
-            hours: noteHours,
-            livingExpense: parsedNoteLiving
+            netEarned: balanceDiff,
+            hours: estimatedHours
           }
         : undefined
     );
@@ -141,10 +125,10 @@ export const WalletSettingsModal: React.FC<WalletSettingsModalProps> = ({
             </div>
             <div>
               <h3 className="text-sm sm:text-base font-bold text-white">
-                Chỉnh Sửa Số Dư 3 Ví & Mục Tiêu
+                Cập Nhật 3 Ví & Mục Tiêu
               </h3>
               <p className="text-[11px] text-zinc-400">
-                Tổng 3 ví là số tiền thật bạn đang giữ • Không tự động trừ bởi các khoản dự tính
+                Tổng 3 ví là số tiền thật hiện có • Tự chia số tiền cần kiếm cho các ngày còn lại
               </p>
             </div>
           </div>
@@ -162,7 +146,7 @@ export const WalletSettingsModal: React.FC<WalletSettingsModalProps> = ({
           {/* Section 1: 3 Wallets */}
           <div className="space-y-3">
             <span className="text-xs font-bold uppercase tracking-wider text-emerald-400">
-              1. Nhập Số Dư 3 Ví Thực Tế Lúc Này
+              1. Số Dư 3 Ví Hiện Tại
             </span>
 
             {/* Wallet 1: Bank Account */}
@@ -191,9 +175,9 @@ export const WalletSettingsModal: React.FC<WalletSettingsModalProps> = ({
               <div className="flex items-center justify-between mb-1">
                 <label className="text-xs font-semibold text-zinc-300 flex items-center gap-1.5">
                   <Smartphone className="w-3.5 h-3.5 text-amber-400" strokeWidth={1.5} />
-                  <span>Ví App tài xế (Be / Grab / Shopee)</span>
+                  <span>Ví App tài xế</span>
                 </label>
-                <span className="text-[10px] text-zinc-400">Số dư thực trên App</span>
+                <span className="text-[10px] text-zinc-400">Be / Grab / Shopee</span>
               </div>
               <div className="relative">
                 <input
@@ -228,17 +212,17 @@ export const WalletSettingsModal: React.FC<WalletSettingsModalProps> = ({
               </div>
             </div>
 
-            {/* Live Total Box */}
+            {/* Live Total & Net Change Box */}
             <div className="p-3 rounded-xl bg-zinc-950 border border-emerald-500/30 flex items-center justify-between">
               <div>
                 <span className="text-xs font-bold text-zinc-300 block">
-                  Tổng 3 ví hiện có:{' '}
+                  Tổng 3 ví:{' '}
                   <span className="text-emerald-400 font-black text-sm">
                     {totalCurrent.toLocaleString('vi-VN')} đ
                   </span>
                 </span>
                 <span className="text-[10px] text-zinc-400">
-                  Trước khi sửa: {previousTotal.toLocaleString('vi-VN')} đ
+                  Trước đó: {previousTotal.toLocaleString('vi-VN')} đ
                 </span>
               </div>
               <div className="text-right">
@@ -249,98 +233,48 @@ export const WalletSettingsModal: React.FC<WalletSettingsModalProps> = ({
                 >
                   {balanceDiff >= 0 ? `+${balanceDiff.toLocaleString('vi-VN')}` : balanceDiff.toLocaleString('vi-VN')} đ
                 </span>
-                <span className="text-[10px] text-zinc-400 block">chênh lệch ví</span>
+                <span className="text-[10px] text-zinc-400 block">thực thu (chênh lệch)</span>
               </div>
-            </div>
-
-            <div className="flex items-start gap-2 px-3 py-2 rounded-xl bg-sky-950/30 border border-sky-500/25 text-[11px] text-sky-200/90">
-              <Info className="w-3.5 h-3.5 text-sky-400 shrink-0 mt-0.5" strokeWidth={1.5} />
-              <span>
-                Hệ thống sẽ dùng đúng con số <b>{totalCurrent.toLocaleString('vi-VN')} đ</b> này để tính lại KPI các ngày còn lại. Không tự cộng hay tự trừ khoản nào cả.
-              </span>
             </div>
           </div>
 
-          {/* Section 2: Optional Note into Calendar (OFF by default) */}
+          {/* Section 2: Optional Record Diff as Thực Thu on Calendar */}
           <div className="space-y-2.5 pt-3 border-t border-zinc-800">
             <button
               type="button"
-              onClick={handleToggleNoteDay}
+              onClick={() => setShouldRecordNet(!shouldRecordNet)}
               className="flex items-center gap-2 text-xs font-semibold text-zinc-200 hover:text-white cursor-pointer select-none w-full text-left"
             >
-              {shouldNoteDay ? (
-                <CheckSquare className="w-4 h-4 text-amber-400 shrink-0" strokeWidth={1.5} />
+              {shouldRecordNet ? (
+                <CheckSquare className="w-4 h-4 text-emerald-400 shrink-0" strokeWidth={1.5} />
               ) : (
                 <Square className="w-4 h-4 text-zinc-500 shrink-0" strokeWidth={1.5} />
               )}
-              <NotebookPen className="w-3.5 h-3.5 text-amber-400 shrink-0" strokeWidth={1.5} />
-              <span>Tiện thể ghi chú (note) doanh thu chạy xe vào 1 ngày trên lịch</span>
+              <NotebookPen className="w-3.5 h-3.5 text-emerald-400 shrink-0" strokeWidth={1.5} />
+              <span>
+                Ghi nhận chênh lệch{' '}
+                <b className={balanceDiff >= 0 ? 'text-emerald-400' : 'text-rose-400'}>
+                  {balanceDiff >= 0 ? '+' : ''}
+                  {balanceDiff.toLocaleString('vi-VN')} đ
+                </b>{' '}
+                làm Thực thu ngày trên lịch
+              </span>
             </button>
 
-            {shouldNoteDay && (
-              <div className="p-3 rounded-xl bg-zinc-950 border border-amber-500/30 space-y-3">
-                <div className="flex items-center justify-between gap-2">
-                  <span className="text-[11px] text-zinc-400">Chọn ngày ghi chú:</span>
-                  <select
-                    value={selectedDayId}
-                    onChange={(e) => setSelectedDayId(parseInt(e.target.value, 10))}
-                    className="bg-zinc-900 border border-zinc-700 text-xs text-amber-300 font-semibold rounded-lg px-2 py-1 focus:outline-none focus:border-amber-500"
-                  >
-                    {days.map((d) => (
-                      <option key={d.id} value={d.id}>
-                        Ngày {d.day}/{d.month} ({d.weekdayName}) {d.actualEarnings !== null ? '✓ Đã note' : ''}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-
-                <div>
-                  <label className="block text-[11px] font-semibold text-zinc-300 mb-1">
-                    Doanh thu chạy xe muốn note ({noteHours}h ước tính):
-                  </label>
-                  <div className="relative">
-                    <input
-                      type="text"
-                      value={noteRevenue ? parsedNoteRevenue.toLocaleString('vi-VN') : ''}
-                      onChange={(e) => setNoteRevenue(e.target.value.replace(/\D/g, ''))}
-                      placeholder="VD: 400.000"
-                      className="w-full bg-zinc-900 border border-zinc-700 rounded-xl px-3 py-1.5 text-sm font-bold text-emerald-400 focus:outline-none focus:border-emerald-500"
-                    />
-                    <span className="absolute right-3 top-2 text-xs text-zinc-400">VNĐ</span>
-                  </div>
-                </div>
-
-                <div>
-                  <label className="block text-[11px] font-semibold text-zinc-300 mb-1">
-                    Ghi chú tiền tiêu trong ngày (không trừ ví):
-                  </label>
-                  <div className="relative">
-                    <input
-                      type="text"
-                      value={noteLivingExpense ? parsedNoteLiving.toLocaleString('vi-VN') : ''}
-                      onChange={(e) => setNoteLivingExpense(e.target.value.replace(/\D/g, ''))}
-                      placeholder="0"
-                      className="w-full bg-zinc-900 border border-zinc-700 rounded-xl px-3 py-1.5 text-sm font-bold text-amber-400 focus:outline-none focus:border-amber-500"
-                    />
-                    <span className="absolute right-3 top-2 text-xs text-zinc-400">VNĐ</span>
-                  </div>
-                  <div className="grid grid-cols-5 gap-1 pt-1.5">
-                    {PRESET_LIVING_AMOUNTS.map((amt) => (
-                      <button
-                        key={amt}
-                        type="button"
-                        onClick={() => setNoteLivingExpense(String(amt))}
-                        className={`py-1 text-[10px] font-semibold rounded-lg border transition ${
-                          parsedNoteLiving === amt
-                            ? 'bg-amber-500 text-zinc-950 border-amber-400 font-bold'
-                            : 'bg-zinc-800 text-zinc-300 border-zinc-700 hover:bg-zinc-700'
-                        }`}
-                      >
-                        {amt === 0 ? '0k' : `${amt / 1000}k`}
-                      </button>
-                    ))}
-                  </div>
-                </div>
+            {shouldRecordNet && (
+              <div className="p-3 rounded-xl bg-zinc-950 border border-emerald-500/30 flex items-center justify-between gap-2">
+                <span className="text-[11px] text-zinc-400">Áp dụng cho ngày:</span>
+                <select
+                  value={selectedDayId}
+                  onChange={(e) => setSelectedDayId(parseInt(e.target.value, 10))}
+                  className="bg-zinc-900 border border-zinc-700 text-xs text-emerald-300 font-semibold rounded-lg px-2.5 py-1.5 focus:outline-none focus:border-emerald-500"
+                >
+                  {days.map((d) => (
+                    <option key={d.id} value={d.id}>
+                      Ngày {d.day}/{d.month} ({d.weekdayName}) {d.actualEarnings !== null ? '✓ Đã chốt' : ''}
+                    </option>
+                  ))}
+                </select>
               </div>
             )}
           </div>
@@ -348,10 +282,9 @@ export const WalletSettingsModal: React.FC<WalletSettingsModalProps> = ({
           {/* Section 3: Targets */}
           <div className="space-y-3 pt-3 border-t border-zinc-800">
             <span className="text-xs font-bold uppercase tracking-wider text-rose-400">
-              2. Mục Tiêu & Đơn Giá Tính KPI
+              2. Mục Tiêu Tích Lũy
             </span>
 
-            {/* Target Cash */}
             <div>
               <label className="block text-xs font-semibold text-zinc-300 mb-1">
                 Mục tiêu số dư gom trước Tết (06/02/2027)
@@ -366,15 +299,11 @@ export const WalletSettingsModal: React.FC<WalletSettingsModalProps> = ({
                 />
                 <span className="absolute right-3.5 top-2.5 text-xs text-zinc-400">VNĐ</span>
               </div>
-              <p className="text-[10px] text-zinc-400 mt-1">
-                Mặc định: 15 triệu (5tr cho mẹ + 10tr phòng thân ăn Tết).
-              </p>
             </div>
 
-            {/* Hourly Rate */}
             <div>
               <label className="block text-xs font-semibold text-zinc-300 mb-1">
-                Đơn giá chạy xe ước tính / 1 giờ
+                Đơn giá ước tính / 1 giờ (để quy đổi giờ chạy)
               </label>
               <div className="relative">
                 <input
@@ -395,7 +324,7 @@ export const WalletSettingsModal: React.FC<WalletSettingsModalProps> = ({
               type="submit"
               className="flex-1 py-2.5 px-4 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-zinc-950 font-bold text-xs sm:text-sm transition shadow-lg shadow-emerald-950/40"
             >
-              Lưu Số Dư 3 Ví ({totalCurrent.toLocaleString('vi-VN')} đ)
+              Lưu 3 Ví ({totalCurrent.toLocaleString('vi-VN')} đ)
             </button>
             <button
               type="button"
