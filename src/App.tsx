@@ -400,30 +400,25 @@ export const App: React.FC = () => {
   }, [settings.wallets]);
 
   // DYNAMIC RECALIBRATION ENGINE
+  // Principle:
+  // 1. Real cash on hand ALWAYS equals exact sum of the 3 wallets (NH + App + Mặt) — NEVER auto-deducted.
+  // 2. Fixed incomes & expenses (food, bike, rent, debts, salary, mom) are projections/notes ONLY,
+  //    used strictly to compute the daily driving KPI target for remaining (unentered) days.
   const { calculatedDays, dynamicDailyKpi, dynamicHoursPerDay, stats } = useMemo(() => {
     const unenteredDays = days.filter((d) => d.actualEarnings === null);
     const enteredDays = days.filter((d) => d.actualEarnings !== null);
-    const initialCampaignCash = settings.initialCash ?? 1000000;
 
-    // Compute wallet balance after all entered days
-    let runningBalanceEntered = initialCampaignCash;
-    enteredDays.forEach((d) => {
-      const living = d.actualLivingExpense !== null ? d.actualLivingExpense : d.foodCost;
-      const totalExp = living + d.bikeCost + d.rentCost + d.debtPayment;
-      const net = ((d.actualEarnings || 0) + d.otherIncome) - totalExp;
-      runningBalanceEntered += net;
-    });
+    // Real current balance = exact sum of 3 wallets entered by user
+    const currentWalletBalance = totalLiquidWallets;
 
-    const currentWalletBalance = enteredDays.length > 0 ? runningBalanceEntered : totalLiquidWallets;
-
-    // Remaining future commitments for unentered days
+    // Planned future commitments for remaining (unentered) days — ONLY to compute daily KPI goal
     const futureIncomes = unenteredDays.reduce((sum, d) => sum + d.otherIncome, 0);
     const futureExpenses = unenteredDays.reduce((sum, d) => {
       const plannedLiving = d.actualLivingExpense !== null ? d.actualLivingExpense : d.foodCost;
       return sum + (plannedLiving + d.bikeCost + d.rentCost + d.debtPayment);
     }, 0);
 
-    // Total earnings needed from driving across remaining days
+    // Total earnings needed from driving across remaining days to reach targetCash
     const netNeededFromDriving = (settings.targetCash - currentWalletBalance) + futureExpenses - futureIncomes;
 
     let dynamicKpi = DAILY_KPI;
@@ -434,20 +429,18 @@ export const App: React.FC = () => {
       dynamicKpi = 0;
     }
 
-    const dynamicHours = Math.round((dynamicKpi / settings.hourlyRate) * 10) / 10;
+    const dynamicHours = settings.hourlyRate > 0
+      ? Math.round((dynamicKpi / settings.hourlyRate) * 10) / 10
+      : 0;
 
-    // Build calculated day objects
-    let rollingBal = initialCampaignCash;
+    // Build calculated day objects (notes + KPI targets; never mutates real wallet balance)
     const calculated = days.map((d) => {
-      const effectiveLiving = d.actualLivingExpense !== null ? d.actualLivingExpense : d.foodCost;
-      const totalExpense = effectiveLiving + d.bikeCost + d.rentCost + d.debtPayment;
       const isEntered = d.actualEarnings !== null;
+      const effectiveLiving = d.actualLivingExpense !== null ? d.actualLivingExpense : (isEntered ? 0 : d.foodCost);
+      const plannedTotalExpense = d.foodCost + d.bikeCost + d.rentCost + d.debtPayment;
+      const totalExpense = isEntered ? effectiveLiving : plannedTotalExpense;
       const earned = isEntered ? d.actualEarnings! : 0;
-      const netIncome = (earned + d.otherIncome) - totalExpense;
-
-      if (isEntered) {
-        rollingBal += netIncome;
-      }
+      const netIncome = earned - effectiveLiving;
 
       const targetKpiForDay = isEntered ? d.kpiTarget : dynamicKpi;
       const kpiDiff = isEntered ? d.actualEarnings! - targetKpiForDay : null;
@@ -458,17 +451,17 @@ export const App: React.FC = () => {
         effectiveLivingExpense: effectiveLiving,
         totalExpense,
         netIncome,
-        runningBalance: rollingBal,
+        runningBalance: currentWalletBalance,
         kpiDiff,
         isKpiAchieved,
         dynamicKpiTarget: dynamicKpi
       };
     });
 
-    // High-level statistics
+    // High-level statistics (purely from recorded notes & real 3-wallet sum)
     const totalEarned = enteredDays.reduce((sum, d) => sum + (d.actualEarnings || 0), 0);
     const totalLivingSpent = enteredDays.reduce((sum, d) => {
-      return sum + (d.actualLivingExpense !== null ? d.actualLivingExpense : d.foodCost);
+      return sum + (d.actualLivingExpense !== null ? d.actualLivingExpense : 0);
     }, 0);
     const daysAchieved = enteredDays.filter((d) => (d.actualEarnings || 0) >= d.kpiTarget).length;
     const remainingToTarget = Math.max(0, settings.targetCash - currentWalletBalance);
@@ -548,7 +541,8 @@ export const App: React.FC = () => {
                   debtPayment: overrides.debtPayment,
                   debtLabel: overrides.debtLabel,
                   otherIncome: overrides.otherIncome,
-                  otherIncomeLabel: overrides.otherIncomeLabel
+                  otherIncomeLabel: overrides.otherIncomeLabel,
+                  isManualOverride: true
                 }
               : {})
           }
@@ -606,6 +600,9 @@ export const App: React.FC = () => {
         : d
     );
     setDays(updatedDays);
+    const nowIso = new Date().toISOString();
+    localStorage.setItem(DAYS_STORAGE_KEY, JSON.stringify(updatedDays));
+    localStorage.setItem(LOCAL_UPDATED_AT_KEY, nowIso);
     broadcastToCloud(updatedDays, settings, schedules);
     setToastMessage({
       type: 'info',
@@ -661,18 +658,15 @@ export const App: React.FC = () => {
 
       const targetD = days.find((d) => d.id === autoRecord.dayId);
       const dayText = targetD ? `Ngày ${targetD.day}/${targetD.month}` : `Ngày ${autoRecord.dayId}`;
-      const livingSpentText = autoRecord.livingExpense !== undefined
-        ? ` (sau khi trừ chi tiêu thực tế ${autoRecord.livingExpense.toLocaleString('vi-VN')} đ)`
-        : '';
 
       setToastMessage({
         type: 'success',
-        text: `Đã cập nhật 3 ví! Tự động suy ra và ghi nhận +${autoRecord.revenue.toLocaleString('vi-VN')} đ vào ${dayText}${livingSpentText} & cân đối lại KPI!`
+        text: `Đã cập nhật số dư 3 ví & lưu ghi chú +${autoRecord.revenue.toLocaleString('vi-VN')} đ vào ${dayText}. KPI đã cân đối lại!`
       });
     } else {
       setToastMessage({
         type: 'success',
-        text: 'Đã cập nhật số dư ví & mục tiêu! Toàn bộ KPI các ngày còn lại đã được tính lại chính xác.'
+        text: 'Đã cập nhật chính xác số dư 3 ví & tính lại KPI các ngày còn lại!'
       });
     }
 
@@ -884,17 +878,17 @@ export const App: React.FC = () => {
             </div>
           </div>
 
-          {/* Card 2: Đã cày & Đã tiêu */}
+          {/* Card 2: Đã cày & Ghi chú chi */}
           <div className="p-3 sm:p-3.5 rounded-2xl bg-zinc-900/60 backdrop-blur-md border border-white/10 shadow-lg shadow-black/40">
             <div className="flex items-center justify-between text-zinc-400 text-xs mb-1">
-              <span>Thu & Chi ({stats.completedDays} ngày)</span>
+              <span>Note cày ({stats.completedDays} ngày)</span>
               <TrendingUp className="w-3.5 h-3.5 text-amber-400" strokeWidth={1.5} />
             </div>
             <div className="text-base sm:text-lg font-black text-amber-400">
               +{stats.totalEarned.toLocaleString('vi-VN')} đ
             </div>
             <div className="text-[10px] text-zinc-400 mt-0.5">
-              Đã tiêu sinh hoạt: -{stats.totalLivingSpent.toLocaleString('vi-VN')} đ
+              Note đã tiêu: {stats.totalLivingSpent.toLocaleString('vi-VN')} đ
             </div>
           </div>
 
@@ -1027,16 +1021,7 @@ export const App: React.FC = () => {
       <DayModal
         isOpen={isDayModalOpen}
         day={selectedDay}
-        dayStartBalance={
-          selectedDay
-            ? (() => {
-                const idx = calculatedDays.findIndex((d) => d.id === selectedDay.id);
-                return idx > 0
-                  ? calculatedDays[idx - 1].runningBalance
-                  : (settings.initialCash ?? 1000000);
-              })()
-            : (settings.initialCash ?? 1000000)
-        }
+        currentWallets={settings.wallets || DEFAULT_SETTINGS.wallets}
         hourlyRate={settings.hourlyRate}
         onClose={() => setIsDayModalOpen(false)}
         onSave={handleSaveDay}

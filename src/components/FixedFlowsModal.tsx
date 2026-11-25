@@ -112,10 +112,10 @@ export const FixedFlowsModal: React.FC<FixedFlowsModalProps> = ({
           <div>
             <h3 className="text-sm sm:text-base font-bold text-white flex items-center gap-2">
               <DollarSign className="w-4 h-4 text-emerald-400" strokeWidth={1.5} />
-              <span>Thay Đổi Khoản Thu & Chi Cố Định</span>
+              <span>Dự Tính Thu & Chi Cố Định (Tính KPI)</span>
             </h3>
             <p className="text-[11px] text-zinc-400">
-              Sửa tiền mẹ cho, lương, tiền nhà, các kỳ nợ hoặc tiền ăn mặc định
+              Chỉ dùng làm ghi chú & tính KPI mục tiêu mỗi ngày • Không tự động trừ vào số dư 3 ví
             </p>
           </div>
           <button
@@ -124,6 +124,11 @@ export const FixedFlowsModal: React.FC<FixedFlowsModalProps> = ({
           >
             ✕
           </button>
+        </div>
+
+        {/* Clarification Banner */}
+        <div className="mt-2.5 px-3 py-2 rounded-xl bg-sky-950/40 border border-sky-500/30 text-[11px] text-sky-200 leading-relaxed">
+          💡 <b>Lưu ý:</b> Toàn bộ các khoản ở đây đều là <b>dự tính (Note)</b> để hệ thống chia ra <b>KPI chạy xe hằng ngày</b> cho các ngày còn lại. Hệ thống <b>không bao giờ tự cộng hay tự trừ</b> vào số dư 3 ví thực tế của bạn.
         </div>
 
         {/* Tab switch */}
