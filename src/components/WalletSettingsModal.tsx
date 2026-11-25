@@ -40,10 +40,21 @@ export const WalletSettingsModal: React.FC<WalletSettingsModalProps> = ({
   const [targetCash, setTargetCash] = useState<string>(String(settings.targetCash ?? 15000000));
   const [hourlyRate, setHourlyRate] = useState<string>(String(settings.hourlyRate ?? 65000));
 
-  // Optional: record wallet change directly as today's Thực thu
-  const firstUnenteredDay = days.find((d) => d.actualEarnings === null) || days[0];
-  const [selectedDayId, setSelectedDayId] = useState<number>(firstUnenteredDay ? firstUnenteredDay.id : 1);
-  const [shouldRecordNet, setShouldRecordNet] = useState<boolean>(false);
+  // Helper: find today's date in days list, fallback to first unentered day
+  const getDefaultDayId = (): number => {
+    const now = new Date();
+    const todayMatch = days.find(
+      (d) => d.year === now.getFullYear() && d.month === now.getMonth() + 1 && d.day === now.getDate()
+    );
+    if (todayMatch) return todayMatch.id;
+    const unentered = days.find((d) => d.actualEarnings === null);
+    return unentered ? unentered.id : (days[0]?.id ?? 1);
+  };
+
+  // Auto-record wallet diff as Thực thu on selected day (ON by default when wallets actually change)
+  const [selectedDayId, setSelectedDayId] = useState<number>(getDefaultDayId);
+  const [shouldRecordNet, setShouldRecordNet] = useState<boolean>(true);
+  const [accumulateIfExists, setAccumulateIfExists] = useState<boolean>(true);
 
   useEffect(() => {
     if (!isOpen) return;
@@ -52,12 +63,9 @@ export const WalletSettingsModal: React.FC<WalletSettingsModalProps> = ({
     setCash(String(settings.wallets?.cash ?? 0));
     setTargetCash(String(settings.targetCash ?? 15000000));
     setHourlyRate(String(settings.hourlyRate ?? 65000));
-    setShouldRecordNet(false);
-
-    const unentered = days.find((d) => d.actualEarnings === null);
-    if (unentered) {
-      setSelectedDayId(unentered.id);
-    }
+    setShouldRecordNet(true);
+    setAccumulateIfExists(true);
+    setSelectedDayId(getDefaultDayId());
   }, [isOpen, settings, days]);
 
   if (!isOpen) return null;
@@ -77,9 +85,12 @@ export const WalletSettingsModal: React.FC<WalletSettingsModalProps> = ({
 
   const parsedTarget = parseInt(targetCash.replace(/\D/g, ''), 10) || 0;
   const parsedRate = parseInt(hourlyRate.replace(/\D/g, ''), 10) || 65000;
+  const existingDayNet = targetDay?.actualEarnings ?? null;
+  const finalRecordedNet =
+    existingDayNet !== null && accumulateIfExists ? existingDayNet + balanceDiff : balanceDiff;
   const estimatedHours =
-    balanceDiff > 0 && parsedRate > 0
-      ? Math.round((balanceDiff / parsedRate) * 10) / 10
+    finalRecordedNet > 0 && parsedRate > 0
+      ? Math.round((finalRecordedNet / parsedRate) * 10) / 10
       : 0;
 
   const handleFormSubmit = (e: React.FormEvent) => {
@@ -95,10 +106,10 @@ export const WalletSettingsModal: React.FC<WalletSettingsModalProps> = ({
         targetCash: parsedTarget,
         hourlyRate: parsedRate
       },
-      shouldRecordNet && targetDay
+      shouldRecordNet && targetDay && balanceDiff !== 0
         ? {
             dayId: targetDay.id,
-            netEarned: balanceDiff,
+            netEarned: finalRecordedNet,
             hours: estimatedHours
           }
         : undefined
@@ -238,43 +249,94 @@ export const WalletSettingsModal: React.FC<WalletSettingsModalProps> = ({
             </div>
           </div>
 
-          {/* Section 2: Optional Record Diff as Thực Thu on Calendar */}
-          <div className="space-y-2.5 pt-3 border-t border-zinc-800">
+          {/* Section 2: Auto Record Wallet Diff as Thực Thu on Calendar */}
+          <div className="p-3 rounded-xl bg-zinc-950 border border-emerald-500/35 space-y-2.5">
             <button
               type="button"
               onClick={() => setShouldRecordNet(!shouldRecordNet)}
-              className="flex items-center gap-2 text-xs font-semibold text-zinc-200 hover:text-white cursor-pointer select-none w-full text-left"
+              className="flex items-center gap-2 text-xs font-bold text-emerald-300 hover:text-emerald-200 cursor-pointer select-none w-full text-left"
             >
               {shouldRecordNet ? (
-                <CheckSquare className="w-4 h-4 text-emerald-400 shrink-0" strokeWidth={1.5} />
+                <CheckSquare className="w-4 h-4 text-emerald-400 shrink-0" strokeWidth={1.75} />
               ) : (
                 <Square className="w-4 h-4 text-zinc-500 shrink-0" strokeWidth={1.5} />
               )}
               <NotebookPen className="w-3.5 h-3.5 text-emerald-400 shrink-0" strokeWidth={1.5} />
-              <span>
-                Ghi nhận chênh lệch{' '}
-                <b className={balanceDiff >= 0 ? 'text-emerald-400' : 'text-rose-400'}>
-                  {balanceDiff >= 0 ? '+' : ''}
-                  {balanceDiff.toLocaleString('vi-VN')} đ
-                </b>{' '}
-                làm Thực thu ngày trên lịch
-              </span>
+              <span>Tự động ghi nhận Thực thu vào lịch khi đổi số dư 3 ví</span>
             </button>
 
             {shouldRecordNet && (
-              <div className="p-3 rounded-xl bg-zinc-950 border border-emerald-500/30 flex items-center justify-between gap-2">
-                <span className="text-[11px] text-zinc-400">Áp dụng cho ngày:</span>
-                <select
-                  value={selectedDayId}
-                  onChange={(e) => setSelectedDayId(parseInt(e.target.value, 10))}
-                  className="bg-zinc-900 border border-zinc-700 text-xs text-emerald-300 font-semibold rounded-lg px-2.5 py-1.5 focus:outline-none focus:border-emerald-500"
-                >
-                  {days.map((d) => (
-                    <option key={d.id} value={d.id}>
-                      Ngày {d.day}/{d.month} ({d.weekdayName}) {d.actualEarnings !== null ? '✓ Đã chốt' : ''}
-                    </option>
-                  ))}
-                </select>
+              <div className="space-y-2 pt-1.5 border-t border-zinc-800/80">
+                <div className="flex items-center justify-between gap-2">
+                  <span className="text-[11px] text-zinc-400">Ghi vào ngày:</span>
+                  <select
+                    value={selectedDayId}
+                    onChange={(e) => setSelectedDayId(parseInt(e.target.value, 10))}
+                    className="bg-zinc-900 border border-zinc-700 text-xs text-emerald-300 font-semibold rounded-lg px-2.5 py-1.5 focus:outline-none focus:border-emerald-500"
+                  >
+                    {days.map((d) => (
+                      <option key={d.id} value={d.id}>
+                        Ngày {d.day}/{d.month} ({d.weekdayName}){' '}
+                        {d.actualEarnings !== null
+                          ? `• Đã có ${d.actualEarnings >= 0 ? '+' : ''}${Math.round(d.actualEarnings / 1000)}k`
+                          : ''}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                {balanceDiff === 0 ? (
+                  <p className="text-[11px] text-zinc-400">
+                    Nhập số dư 3 ví mới ở trên để tự động tính mức chênh lệch làm <b>Thực thu</b> cho ngày này.
+                  </p>
+                ) : (
+                  <div className="space-y-1.5 text-[11px]">
+                    <div className="flex items-center justify-between">
+                      <span className="text-zinc-400">Thực thu sẽ ghi vào Ngày {targetDay?.day}/{targetDay?.month}:</span>
+                      <span
+                        className={`font-black text-xs ${
+                          finalRecordedNet >= 0 ? 'text-emerald-400' : 'text-rose-400'
+                        }`}
+                      >
+                        {finalRecordedNet >= 0 ? '+' : ''}
+                        {finalRecordedNet.toLocaleString('vi-VN')} đ
+                      </span>
+                    </div>
+
+                    {existingDayNet !== null && (
+                      <div className="flex items-center justify-between gap-2 pt-1">
+                        <span className="text-[10px] text-amber-300">
+                          Ngày này đang có {existingDayNet >= 0 ? '+' : ''}
+                          {existingDayNet.toLocaleString('vi-VN')} đ:
+                        </span>
+                        <div className="flex rounded-lg overflow-hidden border border-zinc-700 text-[10px] shrink-0">
+                          <button
+                            type="button"
+                            onClick={() => setAccumulateIfExists(true)}
+                            className={`px-2 py-0.5 font-semibold ${
+                              accumulateIfExists
+                                ? 'bg-emerald-500 text-zinc-950'
+                                : 'bg-zinc-900 text-zinc-400'
+                            }`}
+                          >
+                            Cộng dồn
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setAccumulateIfExists(false)}
+                            className={`px-2 py-0.5 font-semibold ${
+                              !accumulateIfExists
+                                ? 'bg-amber-500 text-zinc-950'
+                                : 'bg-zinc-900 text-zinc-400'
+                            }`}
+                          >
+                            Ghi đè
+                          </button>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
             )}
           </div>
