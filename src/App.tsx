@@ -325,12 +325,35 @@ export const App: React.FC = () => {
     // 1. Exact current balance from 3 wallets
     const currentWalletBalance = totalLiquidWallets;
 
-    // 2. Unpaid debts & upcoming rents from Checklist
+    // 2. Unpaid debts & upcoming rents from Checklist + remaining daily bike installments
     const unpaidItems = schedules.filter((item) => !item.isPaid);
-    const unpaidObligationsTotal = unpaidItems.reduce((sum, item) => sum + item.amount, 0);
-    const totalAllObligations = schedules.reduce((sum, item) => sum + item.amount, 0);
+    const unpaidChecklistTotal = unpaidItems.reduce((sum, item) => sum + item.amount, 0);
+    const totalAllChecklist = schedules.reduce((sum, item) => sum + item.amount, 0);
 
-    // 3. Total target = 15tr Tết savings + all unpaid debts & rents
+    // Remaining bike installments across unentered days (127k/day until 11/12, 77k/day from 12/12)
+    const highBikeRate = settings.highBikeCost ?? 127000;
+    const lowBikeRate = settings.lowBikeCost ?? 77000;
+    let remainingHighBikeDays = 0;
+    let remainingLowBikeDays = 0;
+    const remainingBikeTotal = unenteredDays.reduce((sum, d) => {
+      const isHighBike = d.month === 11 || (d.month === 12 && d.day <= 11);
+      if (isHighBike) {
+        remainingHighBikeDays += 1;
+        return sum + highBikeRate;
+      }
+      remainingLowBikeDays += 1;
+      return sum + lowBikeRate;
+    }, 0);
+
+    const totalAllBike = days.reduce((sum, d) => {
+      const isHighBike = d.month === 11 || (d.month === 12 && d.day <= 11);
+      return sum + (isHighBike ? highBikeRate : lowBikeRate);
+    }, 0);
+
+    const unpaidObligationsTotal = unpaidChecklistTotal + remainingBikeTotal;
+    const totalAllObligations = totalAllChecklist + totalAllBike;
+
+    // 3. Total target = 15tr Tết savings + all unpaid debts & rents + remaining bike installments
     const totalGoalWithDebts = settings.targetCash + unpaidObligationsTotal;
     const remainingToTarget = Math.max(0, totalGoalWithDebts - currentWalletBalance);
 
@@ -393,6 +416,10 @@ export const App: React.FC = () => {
         daysAchieved,
         remainingToTarget,
         unpaidObligationsTotal,
+        unpaidChecklistTotal,
+        remainingBikeTotal,
+        remainingHighBikeDays,
+        remainingLowBikeDays,
         unpaidCount: unpaidItems.length,
         totalGoalWithDebts
       }
@@ -768,7 +795,7 @@ export const App: React.FC = () => {
             </div>
             <div className="text-[10px] text-zinc-400 mt-1 flex justify-between items-center gap-1">
               <span className="truncate">
-                Nợ/Nhà còn: {(stats.unpaidObligationsTotal / 1000000).toFixed(2)}tr
+                Nợ+Xe: {(stats.unpaidObligationsTotal / 1000000).toFixed(2)}tr
               </span>
               <span className="text-purple-400 font-semibold group-hover:underline shrink-0">
                 Tick ✓
@@ -889,6 +916,9 @@ export const App: React.FC = () => {
         isOpen={isDebtModalOpen}
         onClose={() => setIsDebtModalOpen(false)}
         checklist={schedules}
+        remainingBikeTotal={stats.remainingBikeTotal}
+        remainingHighBikeDays={stats.remainingHighBikeDays}
+        remainingLowBikeDays={stats.remainingLowBikeDays}
         onUpdateChecklist={handleUpdateChecklist}
       />
 

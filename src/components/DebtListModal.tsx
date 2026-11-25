@@ -9,7 +9,8 @@ import {
   Plus,
   Trash2,
   Info,
-  RotateCcw
+  RotateCcw,
+  Bike
 } from 'lucide-react';
 import { INITIAL_DEBT_CHECKLIST } from '../data/calendarData';
 
@@ -17,6 +18,9 @@ interface DebtListModalProps {
   isOpen: boolean;
   onClose: () => void;
   checklist: FixedScheduleItem[];
+  remainingBikeTotal: number;
+  remainingHighBikeDays: number;
+  remainingLowBikeDays: number;
   onUpdateChecklist: (updated: FixedScheduleItem[]) => void;
 }
 
@@ -24,6 +28,9 @@ export const DebtListModal: React.FC<DebtListModalProps> = ({
   isOpen,
   onClose,
   checklist,
+  remainingBikeTotal,
+  remainingHighBikeDays,
+  remainingLowBikeDays,
   onUpdateChecklist
 }) => {
   const [isAdding, setIsAdding] = useState(false);
@@ -39,7 +46,8 @@ export const DebtListModal: React.FC<DebtListModalProps> = ({
   const paidItems = sorted.filter((it) => it.isPaid);
 
   const totalAll = sorted.reduce((sum, it) => sum + it.amount, 0);
-  const totalUnpaid = unpaidItems.reduce((sum, it) => sum + it.amount, 0);
+  const totalUnpaidChecklist = unpaidItems.reduce((sum, it) => sum + it.amount, 0);
+  const totalUnpaidWithBike = totalUnpaidChecklist + remainingBikeTotal;
   const totalPaid = paidItems.reduce((sum, it) => sum + it.amount, 0);
   const progressPct = totalAll > 0 ? Math.round((totalPaid / totalAll) * 100) : 100;
 
@@ -133,18 +141,34 @@ export const DebtListModal: React.FC<DebtListModalProps> = ({
         <div className="mt-3 p-3 rounded-xl bg-zinc-950 border border-zinc-800 space-y-2">
           <div className="grid grid-cols-2 gap-2 text-xs">
             <div>
-              <span className="text-[10px] text-zinc-400 block">Còn phải trả ({unpaidItems.length} khoản):</span>
+              <span className="text-[10px] text-zinc-400 block">
+                Tổng còn phải trả (Nợ + Nhà + Góp xe):
+              </span>
               <span className="text-sm sm:text-base font-black text-rose-400">
-                {totalUnpaid.toLocaleString('vi-VN')} đ
+                {totalUnpaidWithBike.toLocaleString('vi-VN')} đ
               </span>
             </div>
             <div className="text-right">
-              <span className="text-[10px] text-zinc-400 block">Đã thanh toán ({paidItems.length} khoản):</span>
+              <span className="text-[10px] text-zinc-400 block">Đã tick trả ({paidItems.length}/{sorted.length}):</span>
               <span className="text-sm sm:text-base font-black text-emerald-400">
                 {totalPaid.toLocaleString('vi-VN')} đ
               </span>
             </div>
           </div>
+
+          {/* Remaining Bike Installment Auto Row */}
+          <div className="pt-2 border-t border-zinc-800/80 flex items-center justify-between text-[11px]">
+            <div className="flex items-center gap-1.5 text-amber-300 font-semibold">
+              <Bike className="w-3.5 h-3.5 text-amber-400 shrink-0" strokeWidth={1.5} />
+              <span>
+                Góp xe còn lại ({remainingHighBikeDays}d×127k + {remainingLowBikeDays}d×77k):
+              </span>
+            </div>
+            <span className="font-black text-amber-400">
+              {remainingBikeTotal.toLocaleString('vi-VN')} đ
+            </span>
+          </div>
+
           <div className="w-full h-1.5 bg-zinc-800 rounded-full overflow-hidden">
             <div
               className="h-full bg-gradient-to-r from-emerald-500 to-teal-400 transition-all duration-300"
