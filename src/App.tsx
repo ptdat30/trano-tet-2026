@@ -5,6 +5,8 @@ import { DebtListModal } from './components/DebtListModal';
 import { WalletSettingsModal } from './components/WalletSettingsModal';
 import { CloudSyncModal } from './components/CloudSyncModal';
 import { CosmicBackground } from './components/CosmicBackground';
+import { DebtAlertBanner } from './components/DebtAlertBanner';
+import { calculateDebtKpiAnalysis } from './utils/debtKpi';
 import {
   getSupabaseConfig,
   fetchCloudPlan,
@@ -324,7 +326,7 @@ export const App: React.FC = () => {
   // - 3 Wallets = Exact real money currently held (NEVER auto-deducted).
   // - Unpaid debts & rents from Checklist are added to targetCash (15tr) to compute total needed.
   // - Daily KPI = ceil((targetCash + unpaidObligations - currentWalletBalance) / remainingDays).
-  const { calculatedDays, dynamicDailyKpi, baselineDailyKpi, dynamicHoursPerDay, stats } = useMemo(() => {
+  const { calculatedDays, dynamicDailyKpi, baselineDailyKpi, dynamicHoursPerDay, debtAnalysis, stats } = useMemo(() => {
     const unenteredDays = days.filter((d) => d.actualEarnings === null);
     const enteredDays = days.filter((d) => d.actualEarnings !== null);
 
@@ -402,7 +404,17 @@ export const App: React.FC = () => {
       };
     });
 
-    // 6. High-level statistics
+    // 6. Minimum Debt KPI & Bottleneck Liquidity Early-Warning Analysis
+    const debtAnalysisResult = calculateDebtKpiAnalysis(
+      days,
+      schedules,
+      currentWalletBalance,
+      highBikeRate,
+      lowBikeRate,
+      settings.hourlyRate
+    );
+
+    // 7. High-level statistics
     const totalNetEarned = enteredDays.reduce((sum, d) => sum + (d.actualEarnings || 0), 0);
     const averageDailyNet =
       enteredDays.length > 0 ? Math.round(totalNetEarned / enteredDays.length) : 0;
@@ -413,6 +425,7 @@ export const App: React.FC = () => {
       dynamicDailyKpi: dynamicKpi,
       baselineDailyKpi: baselineKpi,
       dynamicHoursPerDay: dynamicHours,
+      debtAnalysis: debtAnalysisResult,
       stats: {
         currentBalance: currentWalletBalance,
         totalNetEarned,
@@ -823,22 +836,29 @@ export const App: React.FC = () => {
               </span>
               <span className="text-[11px] text-zinc-400 font-normal">/ngày</span>
             </div>
-            <div className="text-[10px] text-zinc-400 mt-1 flex items-center justify-between">
+            <div className="text-[10px] text-zinc-400 mt-1 flex items-center justify-between gap-1">
               <span>~{dynamicHoursPerDay}h/ngày</span>
-              {kpiDiffFromBaseline !== 0 && (
+              {debtAnalysis.minDebtDailyKpi > 0 ? (
                 <span
-                  className={`font-semibold ${
-                    kpiDiffFromBaseline > 0 ? 'text-amber-400' : 'text-emerald-400'
+                  className={`font-semibold truncate ${
+                    debtAnalysis.severity === 'danger' ? 'text-rose-400' : 'text-amber-400'
                   }`}
+                  title="KPI tối thiểu chỉ để kịp trả nợ đúng hạn"
                 >
-                  {kpiDiffFromBaseline > 0
-                    ? `+${Math.round(kpiDiffFromBaseline / 1000)}k`
-                    : `${Math.round(kpiDiffFromBaseline / 1000)}k`}
+                  Nợ min: {Math.round(debtAnalysis.minDebtDailyKpi / 1000)}k
                 </span>
+              ) : (
+                <span className="font-semibold text-emerald-400">✓ Đủ trả nợ</span>
               )}
             </div>
           </div>
         </div>
+
+        {/* Early-Warning Minimum Debt KPI & Cashflow Bottleneck Radar */}
+        <DebtAlertBanner
+          analysis={debtAnalysis}
+          onOpenChecklist={() => setIsDebtModalOpen(true)}
+        />
 
         {/* Dynamic Balance Advice Pill */}
         <div className="px-4 py-2.5 rounded-xl bg-zinc-900/50 backdrop-blur-md border border-white/10 text-xs flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2">
